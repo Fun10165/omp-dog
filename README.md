@@ -117,6 +117,10 @@ dev/                type-check sandbox and the core sync helper
 
 - The engine shells out to `tar` for directory captures and for materializing a frozen
   object for a verifier.
+- The script library is **CommonJS** while the repository is ESM, so `scripts/` carries its
+  own `package.json` pinning `"type": "commonjs"`. Without that scope a `.js` script is
+  loaded as an ES module, `require` is undefined, and every script-governed goal settles
+  `inconclusive`. A script you drop into `scripts/` is CommonJS for the same reason.
 - No hot reload: extension changes need a session restart. Loading takes no session-level
   action, so a broken edit cannot corrupt another session's state — it just fails to load.
 - Tools write only under `<project>/.omp/dog/` and never touch unrelated files.

@@ -1,0 +1,4 @@
+{
+  "//": "The DoG script library is CommonJS by contract: a script is executed with the captured object path as its only argument and writes a verdict to stdout. Scope that directory explicitly so the repository's ESM package metadata does not change how a host-authored script is loaded.",
+  "type": "commonjs"
+}
