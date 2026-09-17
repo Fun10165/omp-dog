@@ -14,6 +14,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { resolveScriptPath } from "../core/engine.ts";
 import { sha256Json } from "../core/json.ts";
 import { isJsonValue } from "../core/model.ts";
+import { writeVerifierBinding } from "./bindings.ts";
 import type { AgenticRunner, ProgrammaticRunner, Verdict } from "../core/verifiers.ts";
 import {
 	dispatchDirectory,
@@ -103,7 +104,10 @@ export function createAgenticRunner(options: AgenticRunnerOptions): AgenticRunne
 				"agentic kernel invoked without a goal",
 			);
 		}
-		const graphDigest = runId === undefined ? undefined : options.graphDigestFor(runId);
+		if (runId === undefined) {
+			return inconclusive({ outcome: "agentic kernel invoked outside a run" }, "agentic kernel invoked outside a run");
+		}
+		const graphDigest = options.graphDigestFor(runId);
 		if (graphDigest === undefined) {
 			return inconclusive({ outcome: "run is not bound to a graph revision" }, "run is not bound to a graph revision");
 		}
@@ -130,6 +134,19 @@ export function createAgenticRunner(options: AgenticRunnerOptions): AgenticRunne
 			return inconclusive(rejected.evidence, rejected.reason);
 		}
 		const record = resolution.record;
+		// The adoption record is provenance, not judgment: failing to write it must
+		// never change what the kernel decides, so its error is dropped here and the
+		// absence shows up as "no adoption record" whoever reads the ledger.
+		await writeVerifierBinding(options.dogRoot, {
+			runId,
+			goalId,
+			requestId,
+			settlementPath,
+			graphDigest,
+			state: record.state,
+			...(record.verifierAgent === undefined ? {} : { reportedVerifier: record.verifierAgent }),
+			adoptedAt: new Date().toISOString(),
+		}).catch(() => undefined);
 		return {
 			state: record.state,
 			evidence: record.evidence ?? {

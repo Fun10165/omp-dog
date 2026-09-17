@@ -22,8 +22,10 @@ import type { CompiledGraph, DogConfig, DogRun } from "./core/model.ts";
 import { loadSchemaSet, type SchemaSet } from "./core/schema.ts";
 import { DogRepository } from "./core/storage.ts";
 import { WorkspaceManager } from "./core/workspace.ts";
+import { readVerifierBinding } from "./omp/bindings.ts";
 import { dogRootFor, resolveDogConfig } from "./omp/config.ts";
 import { materializeObject, planDispatch } from "./omp/dispatch.ts";
+import { ledgerView } from "./omp/ledger.ts";
 import { createAgenticRunner, createProgrammaticRunner } from "./omp/kernels.ts";
 import { panelLines, runReport, statusText } from "./omp/panel.ts";
 import { writeDispatchRequest, type DispatchRequest } from "./omp/settlement.ts";
@@ -389,31 +391,26 @@ export default function dog(pi: ExtensionAPI): void {
 					{ dog: { headline: `no goal ${params.goalId} in ${params.runId}` } },
 				);
 			}
-			const events = await project.repository.loadGoalRuntimeEvents(params.runId, params.goalId);
-			return textResult(
-				{
-					runId: params.runId,
-					goalId: params.goalId,
-					state: record.state,
-					reason: record.reason ?? null,
-					inheritedFrom: record.inheritedFrom ?? null,
-					verification: record.verification ?? null,
-					events: events.map((event) => ({
-						phase: event.phase,
-						state: event.state ?? null,
-						at: event.at,
-						reason: event.reason ?? null,
-					})),
-				},
-				{
-					dog: {
-						headline: `${params.goalId} · ${record.state}${record.inheritedFrom === undefined ? "" : " (inherited)"}`,
-						rows: events.map(
-							(event) => `${event.at} ${event.phase}${event.state === undefined ? "" : ` → ${event.state}`}`,
+			const [events, binding] = await Promise.all([
+				project.repository.loadGoalRuntimeEvents(params.runId, params.goalId),
+				readVerifierBinding(project.dogRoot, params.runId, params.goalId),
+			]);
+			const view = ledgerView({ run, goalId: params.goalId, events, binding });
+			return textResult(view, {
+				dog: {
+					headline: `${params.goalId} · ${record.state}${record.inheritedFrom === undefined ? "" : " (inherited)"}`,
+					rows: [
+						...(view.adoption === null
+							? []
+							: [
+									`adopted from ${view.adoption.reportedVerifier ?? "an unnamed verifier"} at ${view.adoption.adoptedAt}`,
+								]),
+						...view.events.map(
+							(event) => `${event.at} ${event.phase}${event.state === null ? "" : ` → ${event.state}`}`,
 						),
-					},
+					],
 				},
-			);
+			});
 		},
 	});
 }

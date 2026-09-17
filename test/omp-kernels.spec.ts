@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ExecOptions, ExecResult, ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { sha256Json } from "../core/json.ts";
 import type { Verdict, VerifierExecutionEnv } from "../core/verifiers.ts";
+import { readVerifierBinding } from "../omp/bindings.ts";
 import { createAgenticRunner, createProgrammaticRunner, parseVerdict } from "../omp/kernels.ts";
 import {
 	buildDispatchRequest,
@@ -272,6 +273,33 @@ describe("agentic settlement kernel", () => {
 		});
 	});
 
+	it("records which verifier reported the verdict it adopted", async () => {
+		const fixture = await agenticFixture();
+		await writeDispatchRequest(fixture.request);
+		await writeSettlement(fixture.request.settlementPath, settled(fixture.request, { verifierAgent: "dog-verify-7" }));
+		expect(await fixture.run()).toMatchObject({ state: "pass" });
+
+		const binding = await readVerifierBinding(fixture.dogRoot, RUN_ID, GOAL_ID);
+		expect(binding).toMatchObject({
+			runId: RUN_ID,
+			goalId: GOAL_ID,
+			requestId: fixture.request.requestId,
+			state: "pass",
+			reportedVerifier: "dog-verify-7",
+			graphDigest: GRAPH_DIGEST,
+		});
+		expect(new Date(binding!.adoptedAt).getTime()).toBeGreaterThan(0);
+	});
+
+	it("writes no adoption record when the verdict was refused", async () => {
+		const fixture = await agenticFixture();
+		await writeDispatchRequest(fixture.request);
+		await writeSettlement(fixture.request.settlementPath, settled(fixture.request));
+		await backdate(fixture.request.settlementPath, 600);
+		expectInconclusiveWith(await fixture.run(), { outcome: "settlement predates its dispatch request" });
+		expect(await readVerifierBinding(fixture.dogRoot, RUN_ID, GOAL_ID)).toBeUndefined();
+	});
+
 	it("fails closed when no verifier has settled this judgment", async () => {
 		const fixture = await agenticFixture();
 		expectInconclusiveWith(await fixture.run(), { outcome: "verifier has not settled this goal" });
@@ -320,8 +348,10 @@ describe("agentic settlement kernel", () => {
 		expectInconclusiveWith(await fixture.run({ env: { runId: RUN_ID } }), {
 			outcome: "agentic kernel invoked without a goal",
 		});
+		// No run at all and a run the engine has no revision for are different
+		// mistakes, so they carry different reasons; both fail closed.
 		expectInconclusiveWith(await fixture.run({ env: { goalId: GOAL_ID } }), {
-			outcome: "run is not bound to a graph revision",
+			outcome: "agentic kernel invoked outside a run",
 		});
 		expectInconclusiveWith(await fixture.run({ env: { runId: "unknown-run", goalId: GOAL_ID } }), {
 			outcome: "run is not bound to a graph revision",

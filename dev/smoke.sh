@@ -68,17 +68,30 @@ check() { # $1=label $2=expected $3=actual
   fi
 }
 
+case_t0=0
+begin_case() { # $1=index $2=description
+  case_t0=$SECONDS
+  printf '\n[%s/3] %s\n' "$1" "$2"
+}
+end_case() { printf '      done in %ss\n' "$((SECONDS - case_t0))"; }
+
 echo "work dir: $work"
 
+begin_case 1 "script kernel (no dispatch)"
 run "Do exactly this: read $work/script-graph.json, parse it as JSON, pass the parsed object as the 'graph' parameter to dog_create, then call dog_run with that graphId, then stop."
 check "script kernel passes" "success" "$(root_state smoke-script)"
+end_case
 
+begin_case 2 "agentic kernel (dispatch a verifier, then re-run)"
 run "Do exactly this, in order: (1) read $work/agentic-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId; it returns status needs_verification plus a pending item. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-smoke\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) stop."
 check "agentic kernel passes" "success" "$(root_state smoke-agentic)"
 check "verifier wrote a settlement" "1" "$(settlements)"
+end_case
 
+begin_case 3 "falsification (a bad sample must fail the root)"
 run "Do exactly this, in order: (1) read $work/negative-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-neg\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) stop."
 check "bad sample is blocked" "failure" "$(root_state smoke-negative)"
+end_case
 
 echo
 if [ "$failed" -eq 0 ]; then

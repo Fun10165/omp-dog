@@ -113,8 +113,8 @@ const ATTACKS = [
   guarantee: "a goal whose object and judgment are unchanged is not re-dispatched",
   breakBy: "invert the plan's acceptance of a valid settlement",
   file: "omp/dispatch.ts",
-  find: "if (resolution.ok) return { kind: \"skip\" };",
-  replace: "if (!resolution.ok) return { kind: \"skip\" };",
+  find: 'if (resolution.ok) return { kind: "skip" };',
+  replace: 'if (!resolution.ok) return { kind: "skip" };',
  },
  {
   guarantee: "a goal with nothing captured is deferred, never dispatched",
@@ -136,6 +136,13 @@ const ATTACKS = [
   file: "omp/panel.ts",
   find: "for (const goalId of Object.keys(nodes).slice(0, limit)) {",
   replace: "for (const goalId of []) {",
+ },
+ {
+  guarantee: "the ledger reports which verifier a verdict was adopted from",
+  breakBy: "make every adoption record read back as absent",
+  file: "omp/bindings.ts",
+  find: 'if (typeof record.runId !== "string" || typeof record.goalId !== "string") return undefined;',
+  replace: "if (true) return undefined;",
  },
 ];
 

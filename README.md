@@ -29,8 +29,11 @@ Restart the session: OMP has no extension hot reload. Verify with a fresh sessio
 `dog_create`, `dog_run`, `dog_status` should be top-level tools, and `dog_validate`,
 `dog_cancel`, `dog_graph`, `dog_ledger` should appear as `xd://` devices.
 
-State lives in **`<project>/.omp/dog/`** — graphs, runs, captures, settlements and the
+  State lives in **`<project>/.omp/dog/`** — graphs, runs, captures, settlements and the
 ledger travel with the repository they describe, not with your global agent directory.
+`dog_ledger` reads one goal's verification record, its runtime events, and — for a goal
+judged by a dispatched verifier — the **adoption record** naming who reported the verdict
+(`verifier-bindings/`).
 
 ## Use
 
@@ -91,6 +94,8 @@ too, so a deliberately forged settlement is not cryptographically prevented (the
 deployment had the same property). What the binding guarantees is that no *stale* or
 *mismatched* verdict can be reused as a pass. `agents/dog-verifier.md` is the only
 component trusted to write one, and it is instructed to judge nothing but the frozen copy.
+The adoption record is therefore provenance, not identity: it states which verifier the
+settlement named for itself, on the same footing as the settlement it came from.
 
 ## Quality gates
 
@@ -105,7 +110,7 @@ bun run smoke     # end-to-end against a throwaway project (three model turns)
   README and the smallest edit that breaks it; the harness injects it, runs the suite, and
   reports which tests failed. Which test catches a fault is *observed*, never named up
   front — an attack tuned to the tests would only prove the tests cover themselves.
-  Current state: **15/15 broken guarantees caught**.
+  Current state: **16/16 broken guarantees caught**.
 - **`smoke`** drives the real extension through three graphs and asserts on the engine's
   own persisted state (`<work>/.omp/dog/runs/*.json`, the settlement files), never on the
   model's prose.
