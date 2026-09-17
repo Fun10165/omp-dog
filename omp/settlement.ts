@@ -34,7 +34,8 @@ export interface SettlementRecord {
 	readonly evidence?: JsonValue;
 	readonly reason?: string;
 	readonly verifierAgent?: string;
-	readonly settledAt: string;
+	/** Optional: the engine stamps receipt time from the file's mtime, so a verifier never needs a clock. */
+	readonly settledAt?: string;
 }
 
 /** One goal that needs a dispatched verifier before the engine can judge it. */
@@ -165,7 +166,7 @@ export async function readSettlement(path: string): Promise<SettlementRecord | u
 		...(isJsonValue(record.evidence) ? { evidence: record.evidence } : {}),
 		...(typeof record.reason === "string" ? { reason: record.reason } : {}),
 		...(typeof record.verifierAgent === "string" ? { verifierAgent: record.verifierAgent } : {}),
-		settledAt: typeof record.settledAt === "string" ? record.settledAt : "",
+		...(typeof record.settledAt === "string" ? { settledAt: record.settledAt } : {}),
 	};
 }
 

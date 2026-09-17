@@ -180,7 +180,6 @@ describe("settlement reading", () => {
 			instructionHash: "sha256:aaaa",
 			inputSha256: BYTES_SHA,
 			state: "fail",
-			settledAt: "",
 		});
 
 		const full = join(root, "full.json");

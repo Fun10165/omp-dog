@@ -23,6 +23,15 @@ the same engine).
 git clone https://github.com/Fun10165/omp-dog ~/Developer/omp-dog
 cd ~/Developer/omp-dog && bun install
 ln -s ~/Developer/omp-dog ~/.omp/agent/extensions/dog   # OMP discovers it in place
+
+# The `task` tool resolves `agent: "dog-verifier"` through its own discovery chain, and an
+# auto-discovered extension *directory* is not one of its roots — only a declared extension
+# package is. Skip this and the tools load fine while every dispatch dies with
+# `Unknown agent "dog-verifier"`, which reads as a broken install rather than a missing root.
+# Declare the package root in ~/.omp/agent/config.yml:
+#
+#   extensions:
+#     - ~/Developer/omp-dog
 ```
 
 Restart the session: OMP has no extension hot reload. Verify with a fresh session —
@@ -60,6 +69,38 @@ When `dog_run` returns `needs_verification`, each pending item carries a ready-t
 Then call `dog_run` again. **Never claim a goal verified yourself** — the engine judges
 only settlement files written by dispatched verifiers, and it binds each verdict to the
 bytes and the instruction it was issued for.
+
+## What a dispatched verifier costs
+
+A dispatch is a real subagent run, one per judgeable goal, so the frontmatter in
+`agents/dog-verifier.md` is load-bearing rather than decoration:
+
+- **`read-summarize: false`** — without it the `read` tool hands the judge a structural
+  summary of a JSON object (a 391-line capture came back as 308 lines), and the judge then
+  re-reads the file in ranges and re-counts nodes because it cannot tell whether it saw
+  everything. Measured on a 19-node graph: 50 `read` calls across 14 judges with summaries
+  on, 29 with verbatim reads, at exactly 2 per judge. The brief also prints the object's
+  byte size so completeness is checkable without another read.
+- **`thinking-level`** — an agent that declares none inherits the session's effort, and a
+  session at `max` makes mechanical judging cost ten times what it needs. Same graph, 14
+  judgments each, matched per criterion:
+
+  | level | thinking | output tokens | verdicts agreeing with the max baseline |
+  |---|---|---|---|
+  | `max` (inherited) | 529,143 chars | 181,597 | 14/14 |
+  | `medium` (shipped default) | 146,994 chars (−72%) | 58,249 (−68%) | 13/14 |
+  | `low` | 128,086 chars (−76%) | 51,562 (−72%) | 11/14 |
+
+  `medium` keeps the charges worth keeping: the multi-criterion-leaf findings that `low`
+  loses. What still degrades first is open-ended search ("is any aspect missing?") — spend
+  per-item effort on such a criterion (`task.enableEffort`) instead of raising the whole
+  agent.
+- **`spawns: false`** — a judge never needs to spawn anything.
+
+The brief also says to omit `settledAt`: the settlement's receipt time is the file's mtime,
+and the engine never reads that field to decide anything. Asking for it sent judges looking
+for a clock — 5 of 14 called an unrelated MCP "current time" tool and one listed the
+dispatch directory to find a timestamp — for a field nothing consumes.
 
 In the TUI every tool draws its own call and result line (a state line plus per-goal rows
 when expanded), a `dog <rootState> ✓↺…` status line stays in the footer, a live panel

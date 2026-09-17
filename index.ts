@@ -18,7 +18,7 @@ import { isAbsolute, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { Text } from "@oh-my-pi/pi-tui";
 import { DogEngine } from "./core/engine.ts";
-import type { CompiledGraph, DogConfig, DogRun } from "./core/model.ts";
+import type { CompiledGraph, DogConfig, DogRun, JsonValue } from "./core/model.ts";
 import { loadSchemaSet, type SchemaSet } from "./core/schema.ts";
 import { DogRepository } from "./core/storage.ts";
 import { WorkspaceManager } from "./core/workspace.ts";
@@ -592,6 +592,7 @@ function verifierBrief(options: {
 		"",
 		`Object: ${objectPath} (${objectKind})`,
 		"This is the frozen capture the engine will judge. Read it, and only it — never the live working tree.",
+		`Size: ${request.captured.byteLength} bytes${request.captured.packed === true ? " (packed tar of a directory)" : ""}. It is data, not code: read it verbatim in one pass (the read tool returns file content without structural summaries), and use this size — not a re-read — as the completeness check. Do not page it by line ranges.`,
 		"",
 		"Instruction you are judging:",
 		request.instruction,
@@ -609,7 +610,6 @@ function verifierBrief(options: {
 				evidence: { outcome: "<what you observed>" },
 				reason: "<one line>",
 				verifierAgent: "<your agent id if known>",
-				settledAt: "<ISO timestamp>",
 			},
 			null,
 			2,
@@ -617,6 +617,9 @@ function verifierBrief(options: {
 		`Path: ${request.settlementPath}`,
 		"",
 		"Copy instructionHash, inputSha256, requestId, goalId and graphDigest verbatim from this assignment — they bind your verdict to this exact object. Do not edit any file other than the settlement path.",
+		"Omit settledAt entirely: the engine stamps receipt time, and there is no clock for you to consult — do not go looking for one.",
+		"Keep evidence compact: name the items you judged (ids or titles) with the decisive quote, count, or line number for each, and skip the per-item narration. Keep the whole settlement well under 4 KB.",
+		"Use no tool other than read, grep, glob, write and yield, and ignore the peer roster and sibling verifiers: they are not evidence.",
 	].join("\n");
 }
 
@@ -734,6 +737,24 @@ function summarizeCompiled(compiled: CompiledGraph): unknown {
 	};
 }
 
+/**
+ * Evidence is written to the settlement file at full length; the run report only
+ * carries enough of it for a reader to see the verdict's shape. Without a cap, one
+ * run of a wide graph floods the caller's context with the verifiers' full records.
+ */
+const REPORT_EVIDENCE_LIMIT = 1200;
+
+function boundedEvidence(evidence: JsonValue): JsonValue {
+	const source = JSON.stringify(evidence);
+	if (source === undefined || source.length <= REPORT_EVIDENCE_LIMIT) return evidence;
+	return {
+		truncated: true,
+		chars: source.length,
+		preview: `${source.slice(0, REPORT_EVIDENCE_LIMIT - 140)}…`,
+		fullEvidence: "the settlement file under .omp/dog/dispatches/",
+	};
+}
+
 function summarizeRun(run: DogRun, compiled: CompiledGraph | undefined, extra?: unknown): unknown {
 	const root = compiled?.input.root;
 	const rootGoal = root === undefined ? undefined : run.goals[root];
@@ -751,7 +772,9 @@ function summarizeRun(run: DogRun, compiled: CompiledGraph | undefined, extra?: 
 					state: goal.state,
 					...(goal.reason === undefined ? {} : { reason: goal.reason }),
 					...(goal.inheritedFrom === undefined ? {} : { inheritedFrom: goal.inheritedFrom }),
-					...(goal.verification?.evidence === undefined ? {} : { evidence: goal.verification.evidence }),
+					...(goal.verification?.evidence === undefined
+						? {}
+						: { evidence: boundedEvidence(goal.verification.evidence) }),
 				},
 			]),
 		),
