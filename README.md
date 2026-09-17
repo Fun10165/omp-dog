@@ -34,8 +34,13 @@ ledger travel with the repository they describe, not with your global agent dire
 
 ## Use
 
+Write the graph to a JSON file and pass its path — `dog_create {graphFile: "graphs/acme.json"}`.
+Inline graphs are also accepted (`graph`, as an object or a JSON string), but a graph is a
+deeply nested literal and one missing brace is a structural error the caller has to retype;
+the file form keeps the JSON in a file the write tool already produced.
+
 ```
-① dog_create {graph}    compile + freeze every target as immutable bytes
+① dog_create            compile + freeze every target as immutable bytes
 ② dog_run {graphId}     either status:"needs_verification" (dispatch, then repeat)
                         or a terminal run summary
 ③ dog_status / dog_ledger   per-goal state, evidence, runtime events

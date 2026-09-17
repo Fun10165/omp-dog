@@ -13,7 +13,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { isAbsolute, join } from 'node:path'
 import type { ExtensionAPI, ExtensionContext } from '@oh-my-pi/pi-coding-agent'
 import { DogEngine } from './core/engine.ts'
 import type { CompiledGraph, DogConfig, DogRun } from './core/model.ts'
@@ -56,6 +57,7 @@ function projectContext(cwd: string): Promise<ProjectContext> {
 
 export default function dog(pi: ExtensionAPI): void {
  const z = pi.zod
+ const Graph = dogGraphSchema(z)
  // Registry only. The extension takes no session-lifecycle action of its own:
  // every side effect below happens inside a tool call or the `/dog` command,
  // so loading it can never change what another session in the same project sees.
@@ -63,14 +65,20 @@ export default function dog(pi: ExtensionAPI): void {
  pi.registerTool({
   name: 'dog_validate',
   label: 'DoG Validate',
-  description: 'Statically validate a DoG v0.9 graph: schema, root/edge rules, reachability, acyclicity, expression binding. Writes nothing and runs nothing.',
+  description:
+   'Statically validate a DoG v0.9 graph: schema, root/edge rules, reachability, acyclicity, expression binding. Writes nothing and runs nothing. ' +
+   'Graph shape: {schemaVersion:"0.9", id, root, nodes, contains, dependsOn}; a node is ' +
+   '{kind:"leaf"|"composite", title, constraint:"hard"|"soft", target (workspace-relative path), verifier? {mode:"programmatic",script} | {mode:"agentic",instruction}, completion?}; ' +
+   'a contains edge is {parent, child, required, failure:"fatal"|"tolerable"|"degrade"}; a dependsOn edge is {source, target} and reads "source waits for target"; ' +
+   'root must be a composite with constraint "hard".',
   parameters: z.object({
-   graph: z.unknown().describe('Complete DoG graph object (schemaVersion "0.9"); a JSON-encoded string of the same object is also accepted.'),
+   graph: Graph.optional().describe('Complete DoG graph. Prefer graphFile when the graph is large: an inline literal with this much nesting is easy to malform.'),
+   graphFile: z.string().optional().describe('Path to a JSON file holding the complete graph, resolved against the session working directory. Preferred over graph.'),
   }),
   loadMode: 'discoverable',
   approval: 'read',
-  async execute(_id, params: { graph: unknown }, _signal, _onUpdate, ctx) {
-   const parsed = coerceGraphValue(params.graph)
+  async execute(_id, params: { graph?: unknown; graphFile?: string }, _signal, _onUpdate, ctx) {
+   const parsed = await resolveGraphInput(params, ctx.cwd)
    if ('error' in parsed) return textResult({ valid: false, errors: [parsed.error], warnings: [] })
    const project = await projectContext(ctx.cwd)
    const engine = engineFor(project, pi, undefined)
@@ -83,14 +91,19 @@ export default function dog(pi: ExtensionAPI): void {
   name: 'dog_create',
   label: 'DoG Create',
   description:
-   'Compile and persist a valid DoG v0.9 graph, capturing every verifier target from the session working directory as immutable bytes. Re-issuing the same graph ID captures a new revision — call this again after the artifacts change.',
+   'Compile and persist a valid DoG v0.9 graph, capturing every verifier target from the session working directory as immutable bytes. Re-issuing the same graph ID captures a new revision — call this again after the artifacts change. ' +
+   'Graph shape: {schemaVersion:"0.9", id, root, nodes, contains, dependsOn}; a node is ' +
+   '{kind:"leaf"|"composite", title, constraint:"hard"|"soft", target (workspace-relative path), verifier? {mode:"programmatic",script} | {mode:"agentic",instruction}, completion?}; ' +
+   'a contains edge is {parent, child, required, failure:"fatal"|"tolerable"|"degrade"}; a dependsOn edge is {source, target} and reads "source waits for target"; ' +
+   'root must be a composite with constraint "hard".',
   parameters: z.object({
-   graph: z.unknown().describe('Complete DoG graph object (schemaVersion "0.9"); a JSON-encoded string of the same object is also accepted.'),
+   graph: Graph.optional().describe('Complete DoG graph. Prefer graphFile when the graph is large: an inline literal with this much nesting is easy to malform.'),
+   graphFile: z.string().optional().describe('Path to a JSON file holding the complete graph, resolved against the session working directory. Preferred over graph.'),
   }),
   loadMode: 'essential',
   approval: 'write',
-  async execute(_id, params: { graph: unknown }, _signal, _onUpdate, ctx) {
-   const parsed = coerceGraphValue(params.graph)
+  async execute(_id, params: { graph?: unknown; graphFile?: string }, _signal, _onUpdate, ctx) {
+   const parsed = await resolveGraphInput(params, ctx.cwd)
    if ('error' in parsed) return textResult({ error: parsed.error })
    const project = await projectContext(ctx.cwd)
    const engine = engineFor(project, pi, undefined)
@@ -276,6 +289,64 @@ export default function dog(pi: ExtensionAPI): void {
  })
 }
 
+/**
+ * The graph parameter, declared field by field.
+ *
+ * Every other tool in this harness types its input and describes each field; an
+ * untyped blob would leave the caller to hand-write a deep literal blind, which
+ * is exactly how malformed graphs happen. The one place that stays open is the
+ * nested boolean expression: the language is recursive and the builder has no
+ * recursive form, so `items`/`item` accept anything and the engine validates
+ * them after parsing (it reports `$.nodes.<id>.completion...` paths).
+ */
+function dogGraphSchema(z: ExtensionAPI['zod']) {
+ const boolExpr = z.object({
+  op: z.enum(['ref', 'all', 'any', 'not', 'atLeast']).describe('ref: one child; all: every listed child; any: at least one; atLeast: at least `count`; not: negation'),
+  id: z.string().optional().describe('child goal id, required when op is ref'),
+  count: z.number().optional().describe('threshold, required when op is atLeast'),
+  items: z.array(z.unknown()).optional().describe('nested expressions for all/any/atLeast, same shape as this one; validated by the engine'),
+  item: z.unknown().optional().describe('nested expression for not, same shape as this one; validated by the engine'),
+ })
+ const verifier = z.union([
+  z.object({
+   mode: z.literal('programmatic').describe('a script decides'),
+   script: z.string().describe('script name in the host library, the .js suffix may be omitted'),
+  }),
+  z.object({
+   mode: z.literal('agentic').describe('a dispatched read-only verifier decides'),
+   instruction: z.string().describe('the whole acceptance criterion, in one instruction; the verifier judges the frozen capture against it and nothing else'),
+  }),
+ ])
+ const node = z.object({
+  kind: z.enum(['leaf', 'composite']).describe('leaf: judged by its verifier; composite: judged by its children plus completion'),
+  title: z.string().describe('human-readable name'),
+  constraint: z.enum(['hard', 'soft']).describe('hard: failure propagates; soft: advisory'),
+  target: z.string().describe('workspace-relative path of the object to judge: a file, or a directory that is packed into a tar'),
+  verifier: verifier.optional().describe('required on leaves; on composites an optional whole-object assertion, applied after the subtree settles'),
+  completion: boolExpr.optional().describe('composites only: how child results combine'),
+ })
+ const containsEdge = z.object({
+  parent: z.string().describe('must name a composite node'),
+  child: z.string(),
+  required: z.boolean(),
+  failure: z.enum(['fatal', 'tolerable', 'degrade']).describe('fatal: this child failing fails the group; tolerable: partial; degrade: fall back to degradeTo'),
+  degradeTo: z.string().optional().describe('required when failure is degrade'),
+ })
+ const dependsOnEdge = z.object({
+  source: z.string().describe('waits for target'),
+  target: z.string(),
+  data: z.array(z.string()).optional(),
+ })
+ return z.object({
+  schemaVersion: z.literal('0.9').describe('protocol version, literally "0.9"'),
+  id: z.string().describe('graph id; re-creating the same id records a new revision'),
+  root: z.string().describe('goal id of the root node; it must be a composite with constraint "hard"'),
+  nodes: z.record(node).describe('goal id to node'),
+  contains: z.array(containsEdge).describe('ownership and failure-propagation edges'),
+  dependsOn: z.array(dependsOnEdge).describe('ordering edges; [] when none'),
+ })
+}
+
 /** Build one engine bound to a compiled revision (the agentic kernel needs its digest). */
 function engineFor(project: ProjectContext, pi: ExtensionAPI, compiled: CompiledGraph | undefined): DogEngine {
  const digests = new Map<string, string>()
@@ -416,6 +487,41 @@ function coerceGraphValue(value: unknown): { readonly value: unknown } | { reado
   return { value: JSON.parse(value) as unknown }
  } catch (error) {
   return { error: `graph string is not valid JSON: ${error instanceof Error ? error.message : String(error)}` }
+ }
+}
+
+/**
+ * Resolve the graph from either an inline value or a file path.
+ *
+ * `graphFile` exists because an inline graph is a large hand-written nested
+ * literal: a single missing brace turns into a structural error the model has
+ * to retype, and that happens often enough to be worth a second entry point.
+ * Writing the graph once and passing the path keeps the JSON in a file the
+ * write tool already validated as JSON.
+ */
+async function resolveGraphInput(
+ params: { readonly graph?: unknown; readonly graphFile?: string },
+ cwd: string,
+): Promise<{ readonly value: unknown } | { readonly error: string }> {
+ const file = typeof params.graphFile === 'string' ? params.graphFile.trim() : ''
+ if (params.graph !== undefined && file.length > 0) {
+  return { error: 'pass exactly one of graph or graphFile, not both' }
+ }
+ if (file.length === 0) {
+  if (params.graph === undefined) return { error: 'a graph is required: pass graphFile (path to a JSON file) or graph (object or JSON string)' }
+  return coerceGraphValue(params.graph)
+ }
+ const path = isAbsolute(file) ? file : join(cwd, file)
+ let source: string
+ try {
+  source = await readFile(path, 'utf8')
+ } catch (error) {
+  return { error: `graphFile could not be read (${path}): ${error instanceof Error ? error.message : String(error)}` }
+ }
+ try {
+  return { value: JSON.parse(source) as unknown }
+ } catch (error) {
+  return { error: `graphFile is not valid JSON (${path}): ${error instanceof Error ? error.message : String(error)}` }
  }
 }
 
