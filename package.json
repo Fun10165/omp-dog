@@ -1,0 +1,23 @@
+{
+  "name": "omp-dog",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DoG (DAG of Goals) acceptance gates for OMP: per-goal independent judgment with an evidence ledger",
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "omp": {
+    "extensions": ["index.ts"]
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "bash dev/typecheck.sh"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11"
+  }
+}

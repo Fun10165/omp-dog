@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": [],
+    "paths": {
+      "@oh-my-pi/*": ["./dev/typecheck/node_modules/@oh-my-pi/*"]
+    }
+  },
+  "include": ["index.ts", "omp/**/*.ts", "core/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dev/typecheck/node_modules"]
+}
