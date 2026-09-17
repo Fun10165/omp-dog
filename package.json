@@ -6,17 +6,27 @@
   "type": "module",
   "license": "BSD-3-Clause",
   "omp": {
-    "extensions": ["index.ts"]
+    "extensions": [
+      "index.ts"
+    ]
   },
   "scripts": {
+    "lint": "oxlint .",
+    "fmt": "oxfmt index.ts omp test examples",
+    "fmt:check": "oxfmt --check index.ts omp test examples",
+    "typecheck": "bash dev/typecheck.sh",
     "test": "vitest run",
-    "typecheck": "bash dev/typecheck.sh"
+    "check": "bun run lint && bun run fmt:check && bun run typecheck && bun run test",
+    "smoke": "bash dev/smoke.sh",
+    "mutate": "node dev/mutation-check.mjs"
   },
   "dependencies": {
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11"
   }

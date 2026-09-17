@@ -2,6 +2,10 @@
 # End-to-end smoke against a throwaway project: the script kernel, the agentic
 # kernel with a dispatched verifier, and a falsification case that must fail.
 #
+# Assertions read the engine's own persisted state (<work>/.omp/dog/runs/*.json
+# and the dispatch settlement files), never the model's prose: a transcript can
+# claim anything, a run record cannot.
+#
 # Costs three short model turns. Usage: dev/smoke.sh [model]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -30,33 +34,51 @@ JSON
 agentic_graph smoke-agentic artifact.txt "The captured file must contain the exact line: smoke artifact" > "$work/agentic-graph.json"
 agentic_graph smoke-negative wrong.txt "The captured file must contain the exact line: smoke artifact" > "$work/negative-graph.json"
 
-run() { # $1=prompt
-  ( cd "$work" && "$omp_bin" -p --model "$model" "$1" 2>&1 | tail -60 )
+run() { # $1=prompt; prints the model's tail for diagnostics only
+  ( cd "$work" && "$omp_bin" -p --model "$model" "$1" 2>&1 | tail -8 )
 }
 
-expect() { # $1=label $2=needle $3=output
-  if grep -q "$2" <<<"$3"; then
-    echo "PASS  $1"
+# rootState of the most recently updated run of one graph, read from the store.
+root_state() { # $1=graphId
+  node -e '
+   const fs = require("node:fs"), path = require("node:path");
+   const dir = path.join(process.argv[1], ".omp", "dog", "runs");
+   const want = process.argv[2];
+   let best = null;
+   for (const file of fs.readdirSync(dir)) {
+    const run = JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
+    if (run.graphId !== want) continue;
+    if (best === null || run.updatedAt > best.updatedAt) best = run;
+   }
+   process.stdout.write(best === null ? "no-run" : String(best.rootState ?? best.state));
+  ' "$work" "$1"
+}
+
+settlements() { # how many settlement files the dispatch wrote
+  find "$work/.omp/dog/dispatches" -name '*.settlement.json' 2>/dev/null | wc -l | tr -d ' '
+}
+
+failed=0
+check() { # $1=label $2=expected $3=actual
+  if [ "$2" = "$3" ]; then
+    echo "PASS  $1 ($2)"
   else
-    echo "FAIL  $1 (looked for: $2)"
-    echo "$3" | tail -20
+    echo "FAIL  $1: expected $2, engine says $3"
     failed=1
   fi
 }
 
-failed=0
 echo "work dir: $work"
 
-out=$(run "Do exactly this: read the file $work/script-graph.json, parse it as JSON, pass the parsed object as the 'graph' parameter to dog_create, then call dog_run with that graphId, then reply with only the raw JSON that dog_run returned.")
-expect "script kernel passes" '"rootState": "success"' "$out"
+run "Do exactly this: read $work/script-graph.json, parse it as JSON, pass the parsed object as the 'graph' parameter to dog_create, then call dog_run with that graphId, then stop."
+check "script kernel passes" "success" "$(root_state smoke-script)"
 
-request="Do exactly this, in order: (1) read $work/agentic-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId; it returns status needs_verification plus a pending item. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-smoke\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) reply with only the raw JSON from step (4)."
-out=$(run "$request")
-expect "agentic kernel passes" '"rootState": "success"' "$out"
+run "Do exactly this, in order: (1) read $work/agentic-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId; it returns status needs_verification plus a pending item. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-smoke\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) stop."
+check "agentic kernel passes" "success" "$(root_state smoke-agentic)"
+check "verifier wrote a settlement" "1" "$(settlements)"
 
-request="Do exactly this, in order: (1) read $work/negative-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-neg\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) reply with only the raw JSON from step (4)."
-out=$(run "$request")
-expect "bad sample is blocked" '"rootState": "failure"' "$out"
+run "Do exactly this, in order: (1) read $work/negative-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-neg\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) stop."
+check "bad sample is blocked" "failure" "$(root_state smoke-negative)"
 
 echo
 if [ "$failed" -eq 0 ]; then
