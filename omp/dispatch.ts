@@ -16,7 +16,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { sha256Json } from "../core/json.ts";
-import type { AcceptancePlan, CompiledGraph, DogRun } from "../core/model.ts";
+import { dependencyComplete } from "../core/logic.ts";
+import type { AcceptancePlan, CompiledGraph, DogGraphInput, DogRun } from "../core/model.ts";
 import type { DogRepository } from "../core/storage.ts";
 import { buildDispatchRequest, instructionHashOf, resolveSettlement, type DispatchRequest } from "./settlement.ts";
 
@@ -26,11 +27,22 @@ export interface DeferredGoal {
 	readonly reason: string;
 }
 
+/** An agentic goal whose prerequisites have not settled yet — dispatching it now would judge out of order. */
+export interface WaitingGoal {
+	readonly goalId: string;
+	readonly target: string;
+	/** The dependency targets and/or children this judgment waits for. */
+	readonly waitingOn: readonly string[];
+	readonly reason: string;
+}
+
 export interface DispatchPlan {
 	/** Agentic goals that need a verifier dispatch before the engine can judge them. */
 	readonly required: readonly DispatchRequest[];
 	/** Agentic goals with nothing to judge yet (no captured object). */
 	readonly deferred: readonly DeferredGoal[];
+	/** Agentic goals whose dependencies are still running; they enter `required` on a later call. */
+	readonly waiting: readonly WaitingGoal[];
 	/** Goals the next run inherits from a prior run instead of re-judging. */
 	readonly inherited: readonly string[];
 }
@@ -51,18 +63,24 @@ export async function planDispatch(options: {
 	readonly compiled: CompiledGraph;
 	readonly dogRoot: string;
 	readonly priorRun: DogRun | undefined;
+	/** The live run, when one exists: dependency gating reads its goal states. */
+	readonly run?: DogRun | undefined;
 }): Promise<DispatchPlan> {
 	const { compiled, dogRoot, priorRun } = options;
+	const run = options.run ?? priorRun;
+	const prerequisites = prerequisitesOf(compiled.input);
 	const outcomes = await Promise.all(Object.keys(compiled.input.nodes).toSorted().map(planOneGoal));
 	const required: DispatchRequest[] = [];
 	const deferred: DeferredGoal[] = [];
+	const waiting: WaitingGoal[] = [];
 	const inherited: string[] = [];
 	for (const outcome of outcomes) {
 		if (outcome.kind === "required") required.push(outcome.request);
 		else if (outcome.kind === "inherited") inherited.push(outcome.goalId);
 		else if (outcome.kind === "deferred") deferred.push(outcome.goal);
+		else if (outcome.kind === "waiting") waiting.push(outcome.goal);
 	}
-	return { required, deferred, inherited };
+	return { required, deferred, waiting, inherited };
 
 	/**
 	 * One goal's verdict on what the engine still needs. The settlement read is the
@@ -103,8 +121,41 @@ export async function planDispatch(options: {
 			instructionHash: instructionHashOf(request.instruction),
 		});
 		if (resolution.ok) return { kind: "skip" };
+		// A judgment that waits for a dependency or for its own children runs in a
+		// later wave: the engine's own wakeup gate is the same completion rule, and
+		// dispatching early would judge an object whose inputs are still moving.
+		const unsettled = (prerequisites.get(goalId) ?? []).filter((id) => !dependencyComplete(run?.goals[id]));
+		if (unsettled.length > 0) {
+			return {
+				kind: "waiting",
+				goal: {
+					goalId,
+					target: plan.target,
+					waitingOn: unsettled,
+					reason: `waiting for ${unsettled.join(", ")} to settle before this judgment can run`,
+				},
+			};
+		}
 		return { kind: "required", request };
 	}
+}
+
+/**
+ * What a judgment waits for: its `dependsOn` targets, plus — for a composite
+ * with its own assertion — its children. Mirrors the engine's scheduling gate
+ * (`unresolvedChild`/`blockedDependency` in core/engine.ts), so the pre-flight
+ * plan and the engine never disagree about what is ready.
+ */
+function prerequisitesOf(input: DogGraphInput): Map<string, string[]> {
+	const map = new Map<string, string[]>();
+	const add = (goalId: string, prerequisite: string): void => {
+		const list = map.get(goalId) ?? [];
+		if (!list.includes(prerequisite)) list.push(prerequisite);
+		map.set(goalId, list);
+	};
+	for (const edge of input.dependsOn) add(edge.source, edge.target);
+	for (const edge of input.contains) add(edge.parent, edge.child);
+	return map;
 }
 
 /** What one agentic goal contributes to the dispatch plan. */
@@ -112,6 +163,7 @@ type GoalOutcome =
 	| { readonly kind: "skip" }
 	| { readonly kind: "inherited"; readonly goalId: string }
 	| { readonly kind: "deferred"; readonly goal: DeferredGoal }
+	| { readonly kind: "waiting"; readonly goal: WaitingGoal }
 	| { readonly kind: "required"; readonly request: DispatchRequest };
 
 export interface MaterializedObject {

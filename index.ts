@@ -22,7 +22,12 @@ import type { CompiledGraph, DogConfig, DogRun, JsonValue } from "./core/model.t
 import { loadSchemaSet, type SchemaSet } from "./core/schema.ts";
 import { DogRepository } from "./core/storage.ts";
 import { WorkspaceManager } from "./core/workspace.ts";
-import { readVerifierBinding } from "./omp/bindings.ts";
+import {
+	readDispatchBindings,
+	readVerifierBinding,
+	writeDispatchBinding,
+	type DispatchBinding,
+} from "./omp/bindings.ts";
 import { dogRootFor, resolveDogConfig } from "./omp/config.ts";
 import { materializeObject, planDispatch } from "./omp/dispatch.ts";
 import { ledgerView } from "./omp/ledger.ts";
@@ -201,41 +206,117 @@ export default function dog(pi: ExtensionAPI): void {
 			const project = await projectContext(ctx.cwd);
 			const compiled = await project.repository.loadGraph(params.graphId);
 			const priorRun = await project.repository.loadLatestSettledRun(params.graphId);
-			const plan = await planDispatch({ compiled, dogRoot: project.dogRoot, priorRun });
+			let run = await latestRun(project, params.graphId);
+			// The live run carries the goal states that gate dispatch: a judgment whose
+			// dependsOn target (or child) has not settled stays in `waiting`, so one
+			// wave of verifiers is dispatched per dependency layer.
+			let plan = await planDispatch({ compiled, dogRoot: project.dogRoot, priorRun, run });
+			if (plan.required.length === 0) {
+				// Nothing to dispatch: advance exactly one wave. The goals this plan puts in
+				// `waiting` are held back so the pump settles their inline prerequisites and
+				// releases the next wave, instead of judging a goal whose verifier has not
+				// been dispatched yet.
+				const engine = engineFor(project, pi, compiled);
+				const advanced = await engine.run(params.graphId, {
+					invocation: { callId: toolCallId },
+					hold: params.mode === "force" ? [] : plan.waiting.map((goal) => goal.goalId),
+				});
+				run = await project.repository.loadRun(advanced.runId);
+				plan = await planDispatch({ compiled, dogRoot: project.dogRoot, priorRun, run });
+			}
 			if (plan.required.length > 0 && params.mode !== "force") {
 				const briefs = await dispatchBriefs({ project, pi, compiled, requests: plan.required, cwd: ctx.cwd });
-				const latest = priorRun ?? (await latestRun(project, params.graphId));
-				await publish(ctx, latest, compiled, { keep: true });
+				await publish(ctx, run, compiled, { keep: true });
 				return textResult(
 					{
 						status: "needs_verification",
 						graphId: params.graphId,
 						graphDigest: compiled.graphDigest,
+						runId: run?.runId ?? null,
 						instruction:
-							'Dispatch each item below with the task tool (agent "dog-verifier"), then call dog_run again. Do not report a goal as verified yourself: the engine judges only the settlement files those subagents write.',
+							'Dispatch each item below with the task tool (agent "dog-verifier"), using its goalId as the task name, and record the returned agent id with dog_bind_agent {graphId, goalId, agentId} so this graph shows who is judging what. Watch a bound agent with history://<agent> or hub. Then call dog_run again. Goals under "waiting" are held back until their dependencies settle — do not dispatch them early. Do not report a goal as verified yourself: the engine judges only the settlement files those subagents write.',
 						pending: briefs,
+						waiting: plan.waiting,
 						deferred: plan.deferred,
 						inherited: plan.inherited,
 					},
 					{
 						dog: {
 							headline: `${params.graphId} · needs verification · ${briefs.length} goal(s)`,
-							rows: plan.required.map((request) => `${request.goalId} [${request.target}] → dispatch dog-verifier`),
+							rows: [
+								...plan.required.map((request) => `${request.goalId} [${request.target}] → dispatch dog-verifier`),
+								...plan.waiting.map((goal) => `${goal.goalId} ⏳ waiting on ${goal.waitingOn.join(", ")}`),
+							],
 						},
 					},
 				);
 			}
-			const engine = engineFor(project, pi, compiled);
-			const run = await engine.run(params.graphId, { invocation: { callId: toolCallId } });
-			const effective = await project.repository.loadRun(run.runId);
-			await publish(ctx, effective, compiled);
+			if (run === undefined) {
+				const engine = engineFor(project, pi, compiled);
+				run = await engine.run(params.graphId, { invocation: { callId: toolCallId } });
+			}
+			await publish(ctx, run, compiled);
 			return textResult(
-				summarizeRun(effective, compiled, {
-					forced: plan.required.length > 0,
+				await summarizeWithAgents(project, run, compiled, {
+					forced: params.mode === "force" && plan.required.length > 0,
 					outstanding: plan.required.map((request) => request.goalId),
 					deferred: plan.deferred.map((goal) => goal.goalId),
+					waiting: plan.waiting,
 				}),
-				{ dog: runDogSummary(effective, compiled) },
+				{ dog: runDogSummary(run, compiled) },
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "dog_bind_agent",
+		label: "DoG Bind Agent",
+		description:
+			"Record which subagent is judging one goal of a graph. Call it right after the task tool returns an agent id: every report of that graph then lists the goal's agent and keeps it under inFlight until the settlement lands, so a caller can watch the judge (history://<agent>), message it (hub), or tell a stuck goal from an unstarted one. Keyed by graph + goal because each dog_run call prepares a fresh run. Re-binding refreshes the mapping. This is provenance for a human reader, never evidence: verdicts come only from settlement files.",
+		parameters: z.object({
+			graphId: z.string().describe("Graph ID the goal belongs to."),
+			goalId: z.string().describe("Goal the subagent is judging."),
+			agentId: z.string().describe("Agent id the task tool returned for that goal."),
+			role: z
+				.enum(["orchestrator", "verifier", "reviewer"])
+				.optional()
+				.describe('What that agent is doing for the goal; defaults to "verifier".'),
+		}),
+		loadMode: "essential",
+		approval: "write",
+		...DOG_RENDERERS,
+		async execute(
+			_id,
+			params: { graphId: string; goalId: string; agentId: string; role?: "orchestrator" | "verifier" | "reviewer" },
+			_signal,
+			_onUpdate,
+			ctx,
+		) {
+			const project = await projectContext(ctx.cwd);
+			const compiled = await project.repository.loadGraph(params.graphId);
+			if (compiled.input.nodes[params.goalId] === undefined) {
+				throw new Error(`graph ${params.graphId} has no goal ${params.goalId}`);
+			}
+			const run = await latestRun(project, params.graphId);
+			const binding: DispatchBinding = {
+				graphId: params.graphId,
+				goalId: params.goalId,
+				agentId: params.agentId,
+				role: params.role ?? "verifier",
+				graphDigest: compiled.graphDigest,
+				...(run === undefined ? {} : { runId: run.runId }),
+				boundAt: new Date().toISOString(),
+			};
+			await writeDispatchBinding(project.dogRoot, binding);
+			const bindings = await readDispatchBindings(project.dogRoot, params.graphId);
+			return textResult(
+				{
+					bound: binding,
+					inFlight: bindings
+						.filter((entry) => run?.goals[entry.goalId]?.verification === undefined)
+						.map((entry) => ({ goalId: entry.goalId, agent: entry.agentId, boundAt: entry.boundAt })),
+				},
+				{ dog: { headline: `${params.graphId} · ${params.goalId} → ${params.agentId}` } },
 			);
 		},
 	});
@@ -258,7 +339,7 @@ export default function dog(pi: ExtensionAPI): void {
 				const run = await project.repository.loadRun(params.runId);
 				const compiled = await safeLoadGraph(project, run.graphId);
 				await publish(ctx, run, compiled);
-				return textResult(summarizeRun(run, compiled), { dog: runDogSummary(run, compiled) });
+				return textResult(await summarizeWithAgents(project, run, compiled), { dog: runDogSummary(run, compiled) });
 			}
 			if (params.graphId !== undefined) {
 				const run = await latestRun(project, params.graphId);
@@ -269,7 +350,7 @@ export default function dog(pi: ExtensionAPI): void {
 							{ graphId: params.graphId, run: null, hint: "no run recorded yet; call dog_create then dog_run" },
 							{ dog: { headline: `${params.graphId} · no run yet` } },
 						)
-					: textResult(summarizeRun(run, compiled), { dog: runDogSummary(run, compiled) });
+					: textResult(await summarizeWithAgents(project, run, compiled), { dog: runDogSummary(run, compiled) });
 			}
 			const graphs = await project.repository.listGraphs();
 			const runs = await project.repository.listRuns();
@@ -320,7 +401,7 @@ export default function dog(pi: ExtensionAPI): void {
 			const run = await engine.cancelRun(params.runId, params.reason ?? "cancelled by the calling session");
 			const compiled = await safeLoadGraph(project, run.graphId);
 			await publish(ctx, run, compiled);
-			return textResult(summarizeRun(run, compiled), { dog: runDogSummary(run, compiled) });
+			return textResult(await summarizeWithAgents(project, run, compiled), { dog: runDogSummary(run, compiled) });
 		},
 	});
 
@@ -755,9 +836,16 @@ function boundedEvidence(evidence: JsonValue): JsonValue {
 	};
 }
 
-function summarizeRun(run: DogRun, compiled: CompiledGraph | undefined, extra?: unknown): unknown {
+function summarizeRun(
+	run: DogRun,
+	compiled: CompiledGraph | undefined,
+	extra?: unknown,
+	/** Live goal → subagent bindings, so the caller can watch or message a judge. */
+	bindings: readonly DispatchBinding[] = [],
+): unknown {
 	const root = compiled?.input.root;
 	const rootGoal = root === undefined ? undefined : run.goals[root];
+	const boundByGoal = new Map(bindings.map((binding) => [binding.goalId, binding]));
 	return {
 		runId: run.runId,
 		graphId: run.graphId,
@@ -775,12 +863,34 @@ function summarizeRun(run: DogRun, compiled: CompiledGraph | undefined, extra?: 
 					...(goal.verification?.evidence === undefined
 						? {}
 						: { evidence: boundedEvidence(goal.verification.evidence) }),
+					...(boundByGoal.has(goalId)
+						? {
+								agent: boundByGoal.get(goalId)?.agentId,
+								agentBoundAt: boundByGoal.get(goalId)?.boundAt,
+							}
+						: {}),
 				},
 			]),
 		),
+		// Who is still working: bound to a goal whose verdict has not landed. Inspect a
+		// bound agent with history://<agent>, message it with hub, cancel via task rules.
+		inFlight: bindings
+			.filter((binding) => run.goals[binding.goalId]?.verification === undefined)
+			.map((binding) => ({ goalId: binding.goalId, agent: binding.agentId, boundAt: binding.boundAt })),
 		...(run.runtimeWarning === undefined ? {} : { runtimeWarning: run.runtimeWarning }),
 		...(extra === undefined ? {} : { dispatch: extra }),
 	};
+}
+
+/** `summarizeRun` for a live run: attaches the goal → subagent bindings of this run. */
+async function summarizeWithAgents(
+	project: ProjectContext,
+	run: DogRun,
+	compiled: CompiledGraph | undefined,
+	extra?: unknown,
+): Promise<unknown> {
+	const bindings = await readDispatchBindings(project.dogRoot, run.graphId);
+	return summarizeRun(run, compiled, extra, bindings);
 }
 
 function textResult(

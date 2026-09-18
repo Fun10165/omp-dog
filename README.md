@@ -70,6 +70,25 @@ Then call `dog_run` again. **Never claim a goal verified yourself** — the engi
 only settlement files written by dispatched verifiers, and it binds each verdict to the
 bytes and the instruction it was issued for.
 
+Dispatch runs in **one wave per dependency layer**. A `dog_run` result carries `pending`
+(dispatch these now) and `waiting` (held back: their `dependsOn` targets, or a composite's
+children, have not settled). The engine will not judge a held goal while it waits — it
+settles the inline prerequisites, releases the next wave, and returns it as `pending` on
+the same call. Dispatching everything at once, or dispatching a `waiting` goal early,
+defeats the ordering the graph declared.
+
+While a wave is out, the graph's report tracks who is judging what: after `task` returns an
+agent id, record it with
+
+```json
+{"graphId": "<graphId>", "goalId": "<goalId>", "agentId": "<agent id>"}
+```
+
+`dog_bind_agent` (keyed by graph + goal, so it survives the fresh run each call prepares).
+Every later report then shows that goal's `agent` and lists it under `inFlight` until its
+settlement lands — the handle is what lets you read a judge's progress (`history://<agent>`),
+message it (`hub`), or tell a stuck goal apart from one nobody started.
+
 ## What a dispatched verifier costs
 
 A dispatch is a real subagent run, one per judgeable goal, so the frontmatter in

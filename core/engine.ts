@@ -3,7 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import { evaluateBoolExpr } from './logic.ts'
+import { dependencyComplete, dependencyNeedsHuman, evaluateBoolExpr } from './logic.ts'
 import { DogValidationError, parseGraph } from './graph.ts'
 import { sha256Json } from './json.ts'
 import type {
@@ -61,6 +61,14 @@ export interface DogRunOptions {
  }
  readonly signal?: AbortSignal
  readonly agent?: HostAgentToken | undefined
+ /**
+  * Goals this call must leave unjudged even when their dependencies are
+  * satisfied. A host whose verifiers are launched by the caller rather than by
+  * the engine passes the goals it is about to dispatch: one pump then settles
+  * the inline prerequisites and releases the next wave, instead of judging that
+  * wave against a settlement that does not exist yet.
+  */
+ readonly hold?: readonly string[]
 }
 
 export interface DogBindAgentOptions {
@@ -371,6 +379,8 @@ export class DogEngine {
  ): Promise<DogRun> {
   const { compiled, runId } = prepared
   const signal = options.signal ?? new AbortController().signal
+  // Goals the caller is about to dispatch: scheduled around, never judged here.
+  const held = new Set(options.hold ?? [])
   const goals: Record<string, GoalResult> = { ...prepared.initial.goals }
   const gmDigests: Record<string, string> = { ...prepared.initial.gmDigests }
   let run: DogRun = prepared.initial
@@ -603,6 +613,10 @@ export class DogEngine {
     const plan = planFor(goalId)
     const waitingOn = (dependencies.get(goalId) ?? []).find(target => !dependencyComplete(goals[target]))
     if (waitingOn !== undefined) continue
+    // Held by the caller: its verifier is dispatched outside the engine, so this
+    // pump must not judge it — it would settle `inconclusive` against a
+    // settlement that has not been written yet.
+    if (held.has(goalId)) continue
     // The concurrency budget bounds model-backed (agentic) verifiers only:
     // programmatic scripts are cheap, deterministic, and must run as soon as
     // their dependencies are satisfied instead of queuing behind agentics.
@@ -720,6 +734,7 @@ export class DogEngine {
      await saveProgress(this.now().toISOString())
      continue
     }
+    if (held.has(goalId)) continue
     const plan = planFor(goalId)
     const isAgentic = plan?.verifier.mode === 'agentic'
     // Composite assertions share the agentic budget with leaves.
@@ -735,6 +750,25 @@ export class DogEngine {
    await Promise.race([...compositeInFlight])
   }
   await Promise.allSettled([...compositeInFlight])
+
+  // Held goals are still pending: the caller is dispatching their verifiers
+  // outside the engine. Finalizing now would compute a root state from an
+  // incomplete tree, so persist what settled and keep the run running.
+  const heldOpen = [...held].filter(goalId => !dependencyComplete(goals[goalId]))
+  if (heldOpen.length > 0 && !signal.aborted) {
+   const heldAt = this.now().toISOString()
+   run = { ...run, state: 'running', goals: { ...goals }, gmDigests: { ...gmDigests }, updatedAt: heldAt }
+   await this.repository.updateRun(runId, current => ({
+    ...current,
+    state: 'running' as const,
+    goals: this.mergeGoalsKeepingHostSessions(goals, current.goals),
+    gmDigests: { ...gmDigests },
+    updatedAt: heldAt,
+   }))
+   await this.workspaces.releaseAll([...runWorkspaces])
+   stopHeartbeat()
+   return deepFreeze(run)
+  }
 
   const rootResult = goals[compiled.input.root]
   const rootState = terminalState(rootResult, this.config.allowPartialRoot)
@@ -1084,26 +1118,6 @@ function relationNeedsHuman(edge: { readonly child: string; readonly failure?: s
   return substitute === 'needs_human' || substitute === 'invalidated'
    || substitute === 'inherited' && goals[edge.degradeTo]?.verification?.passed === null
  }
- return false
-}
-
-function dependencyNeedsHuman(result: GoalResult | undefined): boolean {
- return result?.state === 'needs_human' || result?.state === 'invalidated'
-  || result?.state === 'inherited' && result.verification?.passed === null
-}
-
-/**
- * A dependency is satisfied for scheduling once its target has reached a
- * terminal state — success, failure, needs_human, cancelled, invalidated,
- * partial, or an inherited verdict. This is a *completion* gate, not a
- * success gate: the waiter is released to run its own judgment even when the
- * dependency failed (its verdict is independent evidence).
- */
-function dependencyComplete(result: GoalResult | undefined): boolean {
- const state = result?.state
- if (state === 'success' || state === 'failure' || state === 'needs_human'
-  || state === 'cancelled' || state === 'invalidated' || state === 'partial'
-  || state === 'inherited') return true
  return false
 }
 

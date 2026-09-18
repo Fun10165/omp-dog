@@ -12,11 +12,14 @@ import type {
 	AcceptancePlan,
 	CapturedInput,
 	CompiledGraph,
+	DogGraphInput,
 	DogRun,
+	GoalResult,
 	GoalNodeInput,
 	VerificationRecord,
 } from "../core/model.ts";
 import { DogRepository } from "../core/storage.ts";
+import { readDispatchBindings, writeDispatchBinding } from "../omp/bindings.ts";
 import { dogRootFor } from "../omp/config.ts";
 import { materializeObject, planDispatch } from "../omp/dispatch.ts";
 import { buildDispatchRequest, dispatchDirectory, instructionHashOf, type DispatchRequest } from "../omp/settlement.ts";
@@ -405,3 +408,116 @@ async function packedFixture(): Promise<PackedFixture> {
 	});
 	return { request, repository, cwd: root };
 }
+
+describe("dependency gating", () => {
+	/** root(composite, own assertion) → child; plus an optional dependsOn edge between children. */
+	function orderedGraph(options: { readonly dependsOn: DogGraphInput["dependsOn"] }): CompiledGraph {
+		const upstream = agenticPlan("upstream", { input: capturedObject("upstream.md", "# upstream\n") });
+		const downstream = agenticPlan("downstream", { input: capturedObject("downstream.md", "# downstream\n") });
+		const assertion = agenticPlan("root", { input: capturedObject("root.md", "# whole object\n") });
+		const composite: GoalNodeInput = {
+			kind: "composite",
+			title: "root",
+			constraint: "hard",
+			target: assertion.target,
+			completion: {
+				op: "all",
+				items: [
+					{ op: "ref", id: "upstream" },
+					{ op: "ref", id: "downstream" },
+				],
+			},
+			verifier: assertion.verifier,
+		};
+		return {
+			input: {
+				schemaVersion: "0.9",
+				id: "demo",
+				root: "root",
+				nodes: {
+					root: composite,
+					upstream: nodeFixture("upstream", upstream),
+					downstream: nodeFixture("downstream", downstream),
+				},
+				contains: [
+					{ parent: "root", child: "upstream", required: true, failure: "fatal" },
+					{ parent: "root", child: "downstream", required: true, failure: "fatal" },
+				],
+				dependsOn: options.dependsOn,
+			},
+			graphDigest: GRAPH_DIGEST,
+			acceptancePlans: { root: assertion, upstream, downstream },
+		};
+	}
+
+	it("holds a dependent judgment in waiting until its dependsOn target settles", async () => {
+		const root = await temporaryFixtureRoot();
+		const dogRoot = dogRootFor(root);
+		const compiled = orderedGraph({ dependsOn: [{ source: "downstream", target: "upstream" }] });
+
+		// Nothing has settled: only the judgment with no prerequisites goes out. The
+		// dependent judgment waits for its dependsOn target, and the root's own
+		// assertion waits for both children.
+		const first = await planDispatch({ compiled, dogRoot, priorRun: undefined });
+		expect(first.required.map((request) => request.goalId)).toEqual(["upstream"]);
+		expect(first.waiting.map((goal) => goal.goalId).toSorted()).toEqual(["downstream", "root"]);
+		const held = first.waiting.find((goal) => goal.goalId === "downstream");
+		expect([...(held?.waitingOn ?? [])]).toEqual(["upstream"]);
+		expect(held?.reason).toContain("upstream");
+
+		// Once the target reaches a terminal state the waiter is released — a failed
+		// dependency too, its verdict is independent evidence. The root still waits
+		// until the second child settles.
+		for (const state of ["success", "failure"] as const) {
+			const run = runFixture({ goals: { upstream: { state } as GoalResult } });
+			const wave = await planDispatch({ compiled, dogRoot, priorRun: undefined, run });
+			expect(wave.required.map((request) => request.goalId).toSorted()).toEqual(["downstream", "upstream"]);
+			expect(wave.waiting.map((goal) => goal.goalId)).toEqual(["root"]);
+		}
+	});
+
+	it("holds a composite's own assertion until every child settles", async () => {
+		const root = await temporaryFixtureRoot();
+		const dogRoot = dogRootFor(root);
+		const compiled = orderedGraph({ dependsOn: [] });
+
+		const first = await planDispatch({ compiled, dogRoot, priorRun: undefined });
+		expect(first.required.map((request) => request.goalId).toSorted()).toEqual(["downstream", "upstream"]);
+		expect(first.waiting.map((goal) => goal.goalId)).toEqual(["root"]);
+		expect(first.waiting[0]?.waitingOn.toSorted()).toEqual(["downstream", "upstream"]);
+
+		const run = runFixture({
+			goals: { upstream: { state: "success" } as GoalResult, downstream: { state: "failure" } as GoalResult },
+		});
+		const wave = await planDispatch({ compiled, dogRoot, priorRun: undefined, run });
+		// The assertion is no longer held back once every child has a verdict; the
+		// children stay in the wave because their settlements are still missing.
+		expect(wave.waiting).toEqual([]);
+		expect(wave.required.map((request) => request.goalId)).toContain("root");
+	});
+
+	it("records a dispatch binding, refreshes it on re-dispatch, and reads it back per run", async () => {
+		const root = await temporaryFixtureRoot();
+		const dogRoot = dogRootFor(root);
+		const base = {
+			graphId: "demo",
+			goalId: "leaf",
+			agentId: "VerifierOne",
+			role: "verifier",
+			graphDigest: GRAPH_DIGEST,
+			boundAt: "2026-09-18T00:00:00.000Z",
+		};
+
+		await writeDispatchBinding(dogRoot, base);
+		await writeDispatchBinding(dogRoot, { ...base, graphId: "other-graph", agentId: "OtherGraph" });
+		let bindings = await readDispatchBindings(dogRoot, "demo");
+		expect(bindings.map((binding) => binding.agentId)).toEqual(["VerifierOne"]);
+
+		// A re-dispatch of the same goal replaces the mapping instead of stacking up.
+		await writeDispatchBinding(dogRoot, { ...base, agentId: "VerifierTwo", boundAt: "2026-09-18T00:05:00.000Z" });
+		bindings = await readDispatchBindings(dogRoot, "demo");
+		expect(bindings).toHaveLength(1);
+		expect(bindings[0]?.agentId).toBe("VerifierTwo");
+		expect(bindings[0]?.role).toBe("verifier");
+	});
+});
