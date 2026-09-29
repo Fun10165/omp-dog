@@ -1,11 +1,12 @@
-# omp-dog runtime deps and dev tooling
+# runtime deps
 node_modules/
-dev/typecheck/node_modules/
-dev/typecheck/bun.lock
+
+# DoG state written into this repository when a run points at it
+.omp/dog/
 
 # editor / OS
 .DS_Store
 *.tsbuildinfo
 
-# scratch state if a test run ever points at the repo itself
+# scratch state used by manual checks
 .dog-test/

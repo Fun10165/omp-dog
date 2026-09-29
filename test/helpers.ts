@@ -1,20 +1,31 @@
-/** Test fixtures for DoG v0.9: graph builders and kernel stubs. */
+/** Test fixtures: graph builders, kernel stubs, and an engine bound to a temporary store. */
 
-import { mkdtemp, mkdir, writeFile, chmod } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DogEngine } from "../core/engine.ts";
 import type { DogConfig, DogGraphInput, GoalNodeInput, VerifierShape } from "../core/model.ts";
-
-export interface EngineFixture {
-	root: string;
-	config: DogConfig;
-}
+import { DogRepository } from "../core/storage.ts";
+import type {
+	AgenticRunner,
+	ProgrammaticRunner,
+	Verdict,
+	VerifierExecutionEnv,
+	VerifierTarget,
+} from "../core/verifiers.ts";
 
 export async function temporaryRoot(): Promise<string> {
-	return mkdtemp(join(tmpdir(), "dsh-dog-"));
+	return mkdtemp(join(tmpdir(), "omp-dog-"));
 }
 
-/** Create a minimal programmatic script library under the fixture root. */
+/** Let a fixed amount of time pass (tests only). */
+export function sleep(ms: number): Promise<void> {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	setTimeout(resolve, ms);
+	return promise;
+}
+
+/** Create a throwaway script library under the fixture root. */
 export async function ensureScripts(root: string, names: readonly string[] = ["file-non-empty"]): Promise<void> {
 	const scripts = join(root, "scripts");
 	await mkdir(scripts, { recursive: true });
@@ -38,9 +49,7 @@ export function mkConfig(root: string, scripts: string): DogConfig {
 		maxExpressionDepth: 16,
 		maxSandboxBytes: 1024 * 1024,
 		allowPartialRoot: false,
-		maxConcurrentVerifications: 1,
-		revalidateThreshold: 0.3,
-		gmDigestAlgo: "sha256",
+		maxConcurrentVerifications: 4,
 	};
 }
 
@@ -48,24 +57,24 @@ export function leafNode(
 	overrides: Partial<{ title: string; constraint: "hard" | "soft"; target: string; verifier: VerifierShape }> = {},
 ): GoalNodeInput {
 	return {
-		kind: "leaf" as const,
+		kind: "leaf",
 		title: "leaf",
-		constraint: "hard" as const,
-		target: "artifact.txt" as const,
-		verifier: { mode: "programmatic" as const, script: "file-non-empty" },
+		constraint: "hard",
+		target: "artifact.txt",
+		verifier: { mode: "programmatic", script: "file-non-empty" },
 		...overrides,
 	} as GoalNodeInput;
 }
 
 export function compositeNode(
 	completion: object,
-	overrides: Partial<{ title: string; constraint: "hard" | "soft"; target: string; verifier?: VerifierShape }> = {},
+	overrides: Partial<{ title: string; constraint: "hard" | "soft"; target: string; verifier: VerifierShape }> = {},
 ): GoalNodeInput {
 	return {
-		kind: "composite" as const,
+		kind: "composite",
 		title: "root",
-		constraint: "hard" as const,
-		target: "artifact.txt" as const,
+		constraint: "hard",
+		target: "artifact.txt",
 		completion: completion as GoalNodeInput["completion"],
 		...overrides,
 	} as GoalNodeInput;
@@ -76,33 +85,59 @@ export function graph(
 	contains: DogGraphInput["contains"],
 	id = "demo",
 ): DogGraphInput {
-	return {
-		schemaVersion: "0.9",
-		id,
-		root: "root",
-		nodes,
-		contains,
-		dependsOn: [],
-	};
+	return { schemaVersion: "0.9", id, root: "root", nodes, contains, dependsOn: [] };
 }
 
 /** Fake programmatic kernel: succeeds without executing a real script. */
-export function stubProgrammatic(): (
-	script: string,
-	inputPath: string,
-	env?: import("../core/verifiers.ts").VerifierExecutionEnv,
-) => Promise<import("../core/verifiers.ts").Verdict> {
-	return async () => ({ state: "pass", evidence: { stubbed: true } });
+export function stubProgrammatic(
+	verdict: Verdict = { state: "pass", evidence: { stubbed: true } },
+): ProgrammaticRunner {
+	return async () => verdict;
 }
 
-/** Fake agentic kernel: returns a fixed verdict. */
-export function stubAgentic(
-	verdict: "pass" | "fail" | "inconclusive" = "pass",
-): (
-	instruction: string,
-	workspace?: import("../core/verifiers.ts").IsolatedWorkspace,
-	inputPath?: string,
-	env?: import("../core/verifiers.ts").VerifierExecutionEnv,
-) => Promise<import("../core/verifiers.ts").Verdict> {
-	return async () => ({ state: verdict, evidence: { stubbed: true, verdict } });
+export function stubAgentic(verdict: Verdict = { state: "pass", evidence: { stubbed: true } }): AgenticRunner {
+	return async () => verdict;
+}
+
+/** An agentic kernel that records every call and answers from the supplied table. */
+export function recordingAgentic(answers: (target: VerifierTarget) => Verdict | Promise<Verdict>): {
+	runner: AgenticRunner;
+	calls: Array<{ target: VerifierTarget; instruction: string; workspace: string; env: VerifierExecutionEnv }>;
+} {
+	const calls: Array<{ target: VerifierTarget; instruction: string; workspace: string; env: VerifierExecutionEnv }> =
+		[];
+	const runner: AgenticRunner = async (instruction, workspace, target, env) => {
+		calls.push({ target, instruction, workspace, env });
+		return answers(target);
+	};
+	return { runner, calls };
+}
+
+export interface EngineFixture {
+	readonly engine: DogEngine;
+	readonly repository: DogRepository;
+	readonly root: string;
+}
+
+export async function makeFixture(
+	root: string,
+	options: {
+		readonly programmatic?: ProgrammaticRunner;
+		readonly agentic?: AgenticRunner;
+		readonly concurrency?: number;
+		readonly now?: () => Date;
+	} = {},
+): Promise<EngineFixture> {
+	const scripts = join(root, "scripts");
+	const config = mkConfig(root, scripts);
+	const repository = new DogRepository(join(root, ".omp", "dog"));
+	const engine = new DogEngine({
+		config,
+		repository,
+		programmatic: options.programmatic ?? stubProgrammatic(),
+		agentic: options.agentic ?? stubAgentic(),
+		concurrency: () => options.concurrency ?? config.maxConcurrentVerifications,
+		...(options.now === undefined ? {} : { now: options.now }),
+	});
+	return { engine, repository, root };
 }

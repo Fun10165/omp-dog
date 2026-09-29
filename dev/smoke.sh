@@ -1,102 +1,96 @@
 #!/usr/bin/env bash
-# End-to-end smoke against a throwaway project: the script kernel, the agentic
-# kernel with a dispatched verifier, and a falsification case that must fail.
+# End-to-end smoke against a throwaway project.
 #
-# Assertions read the engine's own persisted state (<work>/.omp/dog/runs/*.json
-# and the dispatch settlement files), never the model's prose: a transcript can
-# claim anything, a run record cannot.
+# Four cases: the script kernel, the agentic kernel (a real `omp --mode rpc`
+# verifier session decides and reports over RPC), a falsification case that must
+# fail, and inheritance on re-run. Assertions read the engine's own persisted
+# report (stdout JSON + <work>/.omp/dog/runs/*.json), never the model's prose.
 #
-# Costs three short model turns. Usage: dev/smoke.sh [model]
+# Costs two short model turns (cases 2 and 3). Usage: dev/smoke.sh [model]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 model="${1:-deepseek/deepseek-flash}"
-omp_bin="${OMP_BIN:-omp}"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/omp-dog-smoke-XXXXXX")
 printf 'smoke artifact\n' > "$work/artifact.txt"
 printf 'this file deliberately does not contain the required line\n' > "$work/wrong.txt"
 
-cat > "$work/script-graph.json" <<'JSON'
-{"schemaVersion":"0.9","id":"smoke-script","root":"root","nodes":{
- "root":{"kind":"composite","title":"smoke root","constraint":"hard","target":"artifact.txt","completion":{"op":"ref","id":"leaf"}},
- "leaf":{"kind":"leaf","title":"artifact non empty","constraint":"hard","target":"artifact.txt","verifier":{"mode":"programmatic","script":"file-non-empty"}}},
- "contains":[{"parent":"root","child":"leaf","required":true,"failure":"fatal"}],"dependsOn":[]}
-JSON
+cat > "$work/graphs.mjs" <<'JS'
+// Emit the three smoke graphs, so the shell stays readable.
+import { writeFileSync } from "node:fs";
+const dir = process.argv[2];
+const leaf = (id, title, target, instruction) => [id, {
+  kind: "leaf", title, constraint: "hard", target,
+  ...(instruction === undefined
+    ? { verifier: { mode: "programmatic", script: "file-non-empty" } }
+    : { verifier: { mode: "agentic", instruction } }),
+}];
+const graph = (id, target, instruction) => ({
+  schemaVersion: "0.9",
+  id,
+  root: "root",
+  nodes: Object.fromEntries([
+    ["root", {
+      kind: "composite", title: "root", constraint: "hard", target,
+      completion: { op: "all", items: [{ op: "ref", id: "leaf" }] },
+    }],
+    leaf("leaf", "smoke leaf", target, instruction),
+  ]),
+  contains: [{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
+  dependsOn: [],
+});
+writeFileSync(`${dir}/script-graph.json`, JSON.stringify(graph("smoke-script", "artifact.txt"), null, 2));
+writeFileSync(`${dir}/agentic-graph.json`, JSON.stringify(
+  graph("smoke-agentic", "artifact.txt", "The captured file must contain the exact line: smoke artifact"), null, 2));
+writeFileSync(`${dir}/negative-graph.json`, JSON.stringify(
+  graph("smoke-negative", "wrong.txt", "The captured file must contain the exact line: smoke artifact"), null, 2));
+JS
+node "$work/graphs.mjs" "$work"
 
-agentic_graph() { # $1=id $2=target $3=instruction
-cat <<JSON
-{"schemaVersion":"0.9","id":"$1","root":"root","nodes":{
- "root":{"kind":"composite","title":"$1 root","constraint":"hard","target":"$2","completion":{"op":"ref","id":"leaf"}},
- "leaf":{"kind":"leaf","title":"$1 leaf","constraint":"hard","target":"$2","verifier":{"mode":"agentic","instruction":"$3"}}},
- "contains":[{"parent":"root","child":"leaf","required":true,"failure":"fatal"}],"dependsOn":[]}
-JSON
-}
-agentic_graph smoke-agentic artifact.txt "The captured file must contain the exact line: smoke artifact" > "$work/agentic-graph.json"
-agentic_graph smoke-negative wrong.txt "The captured file must contain the exact line: smoke artifact" > "$work/negative-graph.json"
+dog() { bun cli.ts "$@" --project "$work" --model "$model"; }
 
-run() { # $1=prompt; prints the model's tail for diagnostics only
-  ( cd "$work" && "$omp_bin" -p --model "$model" "$1" 2>&1 | tail -8 )
-}
-
-# rootState of the most recently updated run of one graph, read from the store.
-root_state() { # $1=graphId
-  node -e '
-   const fs = require("node:fs"), path = require("node:path");
-   const dir = path.join(process.argv[1], ".omp", "dog", "runs");
-   const want = process.argv[2];
-   let best = null;
-   for (const file of fs.readdirSync(dir)) {
-    const run = JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
-    if (run.graphId !== want) continue;
-    if (best === null || run.updatedAt > best.updatedAt) best = run;
-   }
-   process.stdout.write(best === null ? "no-run" : String(best.rootState ?? best.state));
-  ' "$work" "$1"
-}
-
-settlements() { # how many settlement files the dispatch wrote
-  find "$work/.omp/dog/dispatches" -name '*.settlement.json' 2>/dev/null | wc -l | tr -d ' '
-}
+graph_id() { node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).graphId)' "$1"; }
+root_state() { node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).rootState))' "$1"; }
+inherited() { node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).inherited.join(","))' "$1"; }
 
 failed=0
 check() { # $1=label $2=expected $3=actual
-  if [ "$2" = "$3" ]; then
-    echo "PASS  $1 ($2)"
-  else
-    echo "FAIL  $1: expected $2, engine says $3"
-    failed=1
-  fi
+	if [ "$2" = "$3" ]; then
+		printf '  ✓ %s: %s\n' "$1" "$3"
+	else
+		printf '  ✗ %s: expected %s, got %s\n' "$1" "$2" "$3"
+		failed=$((failed + 1))
+	fi
 }
-
-case_t0=0
-begin_case() { # $1=index $2=description
-  case_t0=$SECONDS
-  printf '\n[%s/3] %s\n' "$1" "$2"
-}
-end_case() { printf '      done in %ss\n' "$((SECONDS - case_t0))"; }
 
 echo "work dir: $work"
 
-begin_case 1 "script kernel (no dispatch)"
-run "Do exactly this: read $work/script-graph.json, parse it as JSON, pass the parsed object as the 'graph' parameter to dog_create, then call dog_run with that graphId, then stop."
-check "script kernel passes" "success" "$(root_state smoke-script)"
-end_case
+echo "case 1 — script kernel (no model turn)"
+dog create "$work/script-graph.json" > "$work/script-create.json"
+dog run "$(graph_id "$work/script-create.json")" > "$work/script-run.json"
+check "script kernel" "success" "$(root_state "$work/script-run.json")"
 
-begin_case 2 "agentic kernel (dispatch a verifier, then re-run)"
-run "Do exactly this, in order: (1) read $work/agentic-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId; it returns status needs_verification plus a pending item. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-smoke\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) stop."
-check "agentic kernel passes" "success" "$(root_state smoke-agentic)"
-check "verifier wrote a settlement" "1" "$(settlements)"
-end_case
+echo "case 2 — agentic kernel (one verifier session over RPC)"
+dog create "$work/agentic-graph.json" > "$work/agentic-create.json"
+agentic_id="$(graph_id "$work/agentic-create.json")"
+dog run "$agentic_id" > "$work/agentic-run.json"
+check "agentic kernel" "success" "$(root_state "$work/agentic-run.json")"
+check "verifier session recorded" "agentic" \
+	"$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).goals.find(g=>g.goalId==="leaf").verifier.mode)' "$work/agentic-run.json")"
 
-begin_case 3 "falsification (a bad sample must fail the root)"
-run "Do exactly this, in order: (1) read $work/negative-graph.json, parse it as JSON and pass the parsed object as the 'graph' parameter to dog_create. (2) call dog_run with that graphId. (3) dispatch that item's verifierTask text verbatim with the task tool, called as: {\"context\":\"DoG agentic verification\",\"tasks\":[{\"name\":\"dog-neg\",\"agent\":\"dog-verifier\",\"task\":\"<the verifierTask text>\"}]} and wait for it. (4) call dog_run again with the same graphId. (5) stop."
-check "bad sample is blocked" "failure" "$(root_state smoke-negative)"
-end_case
+echo "case 3 — inheritance (same graph, same bytes)"
+dog run "$agentic_id" > "$work/agentic-rerun.json"
+check "leaf inherited" "leaf" "$(inherited "$work/agentic-rerun.json")"
+
+echo "case 4 — falsification (a bad sample must fail the root)"
+dog create "$work/negative-graph.json" > "$work/negative-create.json"
+dog run "$(graph_id "$work/negative-create.json")" > "$work/negative-run.json" || true
+check "bad sample is blocked" "failure" "$(root_state "$work/negative-run.json")"
 
 echo
 if [ "$failed" -eq 0 ]; then
-  echo "all smoke checks passed ($work)"
+	echo "smoke: all cases passed"
 else
-  echo "smoke FAILED (artifacts kept in $work)"
-  exit 1
+	echo "smoke: $failed case(s) failed; work dir kept at $work" >&2
+	exit 1
 fi
