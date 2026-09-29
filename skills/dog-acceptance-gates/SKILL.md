@@ -8,8 +8,8 @@ description: 用 DoG(DAG of Goals)对非形式化交付物做机械验收:拆成
 把「这份东西做好了没」变成「逐项验收,每项都有独立判据」:每个子目标配一个判据内核,
 引擎执行判据并把证据落盘,总目标由子目标的组合表达式算出结果。
 
-**入口是一个命令行程序**,不是 OMP 工具:**`<repo>/cli.ts`**(通常装在 `~/Developer/omp-dog/`)。
-用 `bash` 调用;需要 `bun` 或 Node 22.6+。
+**入口是一个命令行程序**,不是 OMP 工具:**`omp-dog`**(本机已软链进 PATH;若不在 PATH,
+用 `<仓库>/cli.ts`)。用 `bash` 调用;需要 `bun` 或 Node 22.6+。
 
 ## 什么时候用 / 什么时候不用
 
@@ -25,10 +25,10 @@ description: 用 DoG(DAG of Goals)对非形式化交付物做机械验收:拆成
 
 ```bash
 cd <项目目录>
-<repo>/cli.ts create <图文件.json> --project .      # 校验 + 固化对象 → 打印 graphId
-<repo>/cli.ts run <graphId> --project .             # 判完所有目标 → 打印报告(退出码 0/1)
-<repo>/cli.ts status <runId|graphId> --project .    # 读台账
-<repo>/cli.ts host --project . --model <m>          # 起一个会话,并在会话里挂 dog_* 工具
+omp-dog create <图文件.json> --project .      # 校验 + 固化对象 → 打印 graphId
+omp-dog run <graphId> --project .             # 判完所有目标 → 打印报告(退出码 0/1)
+omp-dog status <runId|graphId> --project .    # 读台账
+omp-dog host --project . --model <m>          # 起一个会话,并在会话里挂 dog_* 工具
 ```
 
 常用参数:`--concurrency <n>`(并发验证会话数,默认 4)、`--timeout <秒>`(单个判决预算,默认 900)、
@@ -78,9 +78,9 @@ cd <项目目录>
 
 ```bash
 ① 写图到文件(嵌套 JSON 手写容易少括号,先写文件再 create)
-② <repo>/cli.ts create <图文件> --project .        → 记下 graphId
-③ <repo>/cli.ts run <graphId> --project .           → 读报告;退出码 0/1
-④ <repo>/cli.ts status <runId> --project .          → 需要逐目标证据时再读
+② omp-dog create <图文件> --project .        → 记下 graphId
+③ omp-dog run <graphId> --project .          → 读报告;退出码 0/1
+④ omp-dog status <runId> --project .         → 需要逐目标证据时再读
 ```
 
 产物改了之后必须**重新 `create`**(重新冻结字节);否则引擎判的还是旧字节。

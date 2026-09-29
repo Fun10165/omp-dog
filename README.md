@@ -33,6 +33,13 @@ Nothing else is installed into OMP: no extension entry, no `~/.omp/agent/extensi
 The CLI runs on Bun or Node 22.6+ (`node cli.ts …` strips types natively). `omp` must be
 on `PATH` (or pass `--omp <path>` / set `OMP_BIN`).
 
+To get a short command, link the entry onto `PATH` — the script resolves its own resources
+relative to the real file, so a symlink works from any working directory:
+
+```sh
+ln -sfn "$PWD/cli.ts" ~/.local/bin/omp-dog     # then: omp-dog run <graphId> --project .
+```
+
 ## Use
 
 ```bash
