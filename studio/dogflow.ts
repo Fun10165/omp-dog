@@ -348,29 +348,35 @@ export function fromCanvas(canvas: Canvas): Document {
 		if (node === undefined) continue;
 		const target = targetValue(node.targetkind, node.target);
 		if (targetFields(target).value.trim().length === 0) problems.push(`${id}: 目标（target）为空`);
-		const verifier = verifierOf(node, problems);
-		const entry: Record<string, unknown> = {
-			kind: node.kind,
-			title: requiredText(node.title, `${id}: 标题为空`, problems),
-			constraint: node.constraint,
-			target,
-			...(verifier === undefined ? {} : { verifier }),
-		};
+		const children =
+			node.kind === "composite"
+				? [...(childrenOfNode.get(id) ?? [])].sort(
+						(left, right) => (visualOrder[left] ?? 0) - (visualOrder[right] ?? 0),
+					)
+				: [];
+		let completion: unknown;
 		if (node.kind === "composite") {
-			const children = [...(childrenOfNode.get(id) ?? [])].sort(
-				(left, right) => (visualOrder[left] ?? 0) - (visualOrder[right] ?? 0),
-			);
 			if (node.completion === DERIVED) {
-				entry.completion = { op: "all", items: children.map((child) => ({ op: "ref", id: child })) };
+				completion = { op: "all", items: children.map((child) => ({ op: "ref", id: child })) };
 			} else {
 				try {
-					entry.completion = JSON.parse(node.completion) as unknown;
+					completion = JSON.parse(node.completion) as unknown;
 				} catch (error) {
 					problems.push(`${id}: completion 不是合法 JSON（${error instanceof Error ? error.message : String(error)}）`);
 				}
 			}
 		}
-		built[id] = entry;
+		const verifier = verifierOf(node, problems);
+		// Field order matches the corpus (kind, title, constraint, target, completion, verifier)
+		// so a save with no real change stays byte-identical.
+		built[id] = {
+			kind: node.kind,
+			title: requiredText(node.title, `${id}: 标题为空`, problems),
+			constraint: node.constraint,
+			target,
+			...(node.kind === "composite" ? { completion } : {}),
+			...(verifier === undefined ? {} : { verifier }),
+		};
 	}
 	for (const edge of contains) {
 		const child = nodes.get(String(edge.child));

@@ -13,8 +13,8 @@
  * with, plus that file's layout sidecar.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { resolveOmpBin } from "../omp/config.ts";
 import { createDogRuntime } from "../omp/runtime.ts";
 
@@ -70,15 +70,53 @@ function validateText(text: string): Validation {
 	return runtime.engine.validate(value);
 }
 
-/** A copy of what is on disk before it is overwritten, named by the local second. */
-function backup(path: string, current: string, next: string): string | undefined {
+/** How many timestamped backups to keep per graph; older ones are pruned after a write. */
+const KEEP_BACKUPS = 5;
+
+const BACKUP_STAMP = /^\d{8}T\d{6}(-\d+)?$/u;
+
+/** Order backups by their own stamp, then by the collision index — never by raw name. */
+function backupOrder(left: string, right: string): number {
+	const parse = (name: string): { stamp: string; index: number } => {
+		const match = /(\d{8}T\d{6})(?:-(\d+))?$/u.exec(name);
+		return { stamp: match?.[1] ?? "", index: Number(match?.[2] ?? 0) };
+	};
+	const a = parse(left);
+	const b = parse(right);
+	if (a.stamp !== b.stamp) return a.stamp < b.stamp ? -1 : 1;
+	return a.index - b.index;
+}
+
+/** Drop this graph's own oldest backups, leaving the newest `KEEP_BACKUPS`. */
+function pruneBackups(path: string): number {
+	const directory = dirname(path);
+	const prefix = `${basename(path)}.bak.`;
+	const mine = readdirSync(directory)
+		.filter((name) => name.startsWith(prefix) && BACKUP_STAMP.test(name.slice(prefix.length)))
+		.sort(backupOrder);
+	const stale = mine.slice(0, Math.max(0, mine.length - KEEP_BACKUPS));
+	for (const name of stale) rmSync(join(directory, name), { force: true });
+	return stale.length;
+}
+
+/** A copy of what is on disk before it is overwritten, named by the local clock. */
+function backup(path: string, current: string, next: string): { path: string; pruned: number } | undefined {
 	if (current === next) return undefined;
 	const now = new Date();
 	const pad = (value: number): string => String(value).padStart(2, "0");
 	const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-	const target = `${path}.bak.${stamp}`;
+	const directory = dirname(path);
+	const prefix = `${basename(path)}.bak.${stamp}`;
+	// Names inside one second must stay ordered and never be reused, so a pruned
+	// name can never come back looking newest.
+	const mine = readdirSync(directory).filter((name) => name === prefix || name.startsWith(`${prefix}-`));
+	const index = mine.reduce(
+		(highest, name) => Math.max(highest, name === prefix ? 0 : Number(name.slice(prefix.length + 1)) || 0),
+		0,
+	);
+	const target = join(directory, `${prefix}${mine.length === 0 ? "" : `-${index + 1}`}`);
 	writeFileSync(target, current, "utf8");
-	return target;
+	return { path: target, pruned: pruneBackups(path) };
 }
 
 async function json(body: unknown, status = 200): Promise<Response> {
@@ -139,7 +177,13 @@ const server = Bun.serve({
 			if (body.layout !== undefined && typeof body.layout === "object" && body.layout !== null) {
 				writeFileSync(layoutPath, `${JSON.stringify(body.layout, null, "\t")}\n`, "utf8");
 			}
-			return json({ ok: true, warnings: report.warnings, ...(created === undefined ? {} : { backup: created }) });
+			return json({
+				ok: true,
+				warnings: report.warnings,
+				...(created === undefined
+					? {}
+					: { backup: created.path, ...(created.pruned === 0 ? {} : { pruned: created.pruned }) }),
+			});
 		}
 		return new Response("not found", { status: 404 });
 	},

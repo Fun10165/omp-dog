@@ -373,6 +373,7 @@ async function save(): Promise<void> {
 		problems?: readonly string[];
 		warnings?: readonly string[];
 		backup?: string;
+		pruned?: number;
 	};
 	if (!payload.ok) {
 		show(payload.problems ?? ["保存被拒绝"], "保存被拒绝（图未通过校验，文件未改动）");
@@ -381,6 +382,7 @@ async function save(): Promise<void> {
 	state.dirty = false;
 	const notes = [...(payload.warnings ?? [])];
 	if (payload.backup !== undefined) notes.push(`备份: ${payload.backup}`);
+	if (payload.pruned !== undefined) notes.push(`已清理 ${payload.pruned} 个旧备份（只保留最近 5 个）`);
 	show(notes, "已保存");
 }
 

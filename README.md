@@ -198,9 +198,10 @@ Two properties come from the canvas instead of from hand-editing:
   (exactly one root, one parent per node, a composite with children, a leaf with a judgment) are
   checked before that.
 
-Every save leaves `<graph>.bak.<local timestamp>` behind, and node positions live in
-`<graph>.layout.json` (both patterns are in `.gitignore`). The first save normalizes the file's
-formatting to tab-indented JSON and keeps the author's node order, so later diffs stay small.
+Every save leaves `<graph>.bak.<local clock>` behind (the newest five are kept), and node
+positions live in `<graph>.layout.json` (both patterns are in `.gitignore`). The first save
+normalizes the file's formatting to tab-indented JSON and keeps the author's node order, so
+later diffs stay small.
 
 The page has no build step: `studio/server.ts` bundles `studio/app.ts` with Bun's bundler on
 request. Everything the canvas *means* lives in `studio/dogflow.ts` — pure functions, covered by

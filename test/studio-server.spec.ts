@@ -116,6 +116,28 @@ describe("the studio server", () => {
 			expect(again.ok).toBe(true);
 			expect(again.backup).toBeUndefined();
 			expect(existsSync(graphPath)).toBe(true);
+
+			// Backups are pruned: eight changing saves leave the newest five, and the
+			// original bytes are gone from the ones that remain.
+			for (let round = 0; round < 8; round++) {
+				const draft = JSON.parse(graphText()) as { nodes: { leaf: { title: string } } };
+				draft.nodes.leaf.title = `第 ${round} 次`;
+				const response = (await (
+					await fetch(`${url}/api/graph`, {
+						method: "PUT",
+						body: JSON.stringify({ text: `${JSON.stringify(draft, null, "\t")}\n` }),
+					})
+				).json()) as { ok: boolean };
+				expect(response.ok).toBe(true);
+			}
+			const backups = readdirSync(root)
+				.filter((name) => name.includes(".bak."))
+				.sort();
+			expect(backups).toHaveLength(5);
+			expect(readFileSync(join(root, backups[backups.length - 1] ?? ""), "utf8")).toContain("第 6 次");
+			expect(backups.filter((name) => readFileSync(join(root, name), "utf8").includes('"title": "叶子"'))).toHaveLength(
+				0,
+			);
 		} finally {
 			server.kill();
 		}

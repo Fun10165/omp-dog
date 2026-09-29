@@ -166,6 +166,29 @@ describe("the canvas bridge", () => {
 		});
 	});
 
+	it("keeps a save byte-identical when nothing changed", () => {
+		const document = sample();
+		const text = `${JSON.stringify(document, null, "\t")}\n`;
+		expect(`${JSON.stringify(fromCanvas(toCanvas(document)), null, "\t")}\n`).toBe(text);
+	});
+
+	it("writes node fields in the corpus order, completion before verifier", () => {
+		const canvas = toCanvas(sample(), {});
+		const withAssertion: Canvas = {
+			...canvas,
+			nodes: canvas.nodes.map((node) => (node.id === "root" ? { ...node, instruction: "整体断言" } : node)),
+		};
+		const written = fromCanvas(withAssertion).nodes as Record<string, Record<string, unknown>>;
+		expect(Object.keys(written.root ?? {})).toEqual([
+			"kind",
+			"title",
+			"constraint",
+			"target",
+			"completion",
+			"verifier",
+		]);
+	});
+
 	it("accepts editor metadata at the root and keeps it out of the parsed graph", () => {
 		const original = sample();
 		const parsed = parseGraph(original, LIMITS);
