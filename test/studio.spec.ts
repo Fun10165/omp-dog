@@ -166,6 +166,28 @@ describe("the canvas bridge", () => {
 		});
 	});
 
+	it("writes containment edges in canvas order, matching the derived expression", () => {
+		const canvas = toCanvas(sample(), {});
+		// b sits above a on the canvas, so both the expression and the edges follow it.
+		const swapped: Canvas = { ...canvas, nodes: [canvas.nodes[0]!, canvas.nodes[2]!, canvas.nodes[1]!] };
+		const document = fromCanvas(swapped);
+		expect(document.contains).toEqual([
+			{ parent: "root", child: "b", required: false, failure: "tolerable" },
+			{ parent: "root", child: "a", required: true, failure: "fatal" },
+		]);
+		expect(document.nodes).toMatchObject({
+			root: {
+				completion: {
+					op: "all",
+					items: [
+						{ op: "ref", id: "b" },
+						{ op: "ref", id: "a" },
+					],
+				},
+			},
+		});
+	});
+
 	it("keeps a save byte-identical when nothing changed", () => {
 		const document = sample();
 		const text = `${JSON.stringify(document, null, "\t")}\n`;

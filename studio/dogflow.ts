@@ -388,6 +388,13 @@ export function fromCanvas(canvas: Canvas): Document {
 	});
 	if (problems.length > 0) throw new CanvasError(problems);
 
+	// The containment array reads in canvas order, so it lines up with the derived
+	// completion expressions instead of following wire-creation order.
+	contains.sort((left, right) => {
+		const parents = (visualOrder[String(left.parent)] ?? 0) - (visualOrder[String(right.parent)] ?? 0);
+		return parents !== 0 ? parents : (visualOrder[String(left.child)] ?? 0) - (visualOrder[String(right.child)] ?? 0);
+	});
+
 	return {
 		schemaVersion: canvas.meta.schemaVersion,
 		id: canvas.meta.graphId,
