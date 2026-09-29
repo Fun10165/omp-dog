@@ -181,6 +181,10 @@
 					},
 					{
 						"op": "ref",
+						"id": "human-readable"
+					},
+					{
+						"op": "ref",
 						"id": "dependency-direction"
 					}
 				]
@@ -188,12 +192,12 @@
 		},
 		"verifier-addressable": {
 			"kind": "leaf",
-			"title": "每个判据可执行",
+			"title": "目标清晰",
 			"constraint": "hard",
 			"target": "generated-dog.graph.json",
 			"verifier": {
 				"mode": "agentic",
-				"goal": "检查每个叶子:agentic 判据是否给了足够边界(什么算过/什么算不过)并明确要求证据;程序化是否指向真实存在的脚本名。判据含糊到执行者只能猜的,列出来 fail。给证据。"
+				"goal": "每个叶子的目标边界清晰。"
 			}
 		},
 		"dependency-direction": {
@@ -203,7 +207,7 @@
 			"target": "generated-dog.graph.json",
 			"verifier": {
 				"mode": "agentic",
-				"goal": "检查每条依赖边:source 依赖 target(先跑的放 target);是否有自依赖/悬空引用/环;方向反了即 fail,给证据。"
+				"goal": "每条依赖边中，source 依赖 target(先跑的放 target)，方向没有不小心弄反。"
 			}
 		},
 		"group-complete": {
@@ -263,6 +267,16 @@
 			"verifier": {
 				"mode": "agentic",
 				"goal": "每个叶子节点的目标不可能被任何公式/规则/代码测试(如'字数大于X')直接判定。"
+			}
+		},
+		"human-readable": {
+			"kind": "leaf",
+			"title": "目标说人话",
+			"constraint": "hard",
+			"target": "generated-dog.graph.json",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "每个叶子的目标中没有出现黑话，即没有背景或上下文无法看懂的名词或者动词。"
 			}
 		}
 	},
@@ -354,6 +368,12 @@
 		{
 			"parent": "group-engineering",
 			"child": "dependency-direction",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-engineering",
+			"child": "human-readable",
 			"required": true,
 			"failure": "fatal"
 		},
