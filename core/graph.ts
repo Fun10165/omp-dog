@@ -30,10 +30,12 @@ export function parseGraph(value: unknown, limits: GraphLimits): DogGraphInput {
 	const errors: string[] = [];
 	const root = asRecord(value, "$", errors);
 	if (root === undefined) throw new DogValidationError(errors);
-	checkExactKeys(root, ["schemaVersion", "id", "root", "nodes", "contains", "dependsOn"], "$", errors);
+	checkExactKeys(root, ["schemaVersion", "id", "root", "background", "nodes", "contains", "dependsOn"], "$", errors);
 	if (root.schemaVersion !== DOG_SCHEMA_VERSION) errors.push(`$.schemaVersion: expected ${DOG_SCHEMA_VERSION}`);
 	const graphId = parseId(root.id, "$.id", errors);
 	const rootId = parseId(root.root, "$.root", errors);
+	const background =
+		root.background === undefined ? undefined : parseNonEmptyString(root.background, "$.background", errors);
 	const nodes = parseNodes(root.nodes, limits, errors);
 	const contains = parseContains(root.contains, errors);
 	const dependsOn = parseDependencies(root.dependsOn, errors);
@@ -53,6 +55,7 @@ export function parseGraph(value: unknown, limits: GraphLimits): DogGraphInput {
 		schemaVersion: DOG_SCHEMA_VERSION,
 		id: graphId,
 		root: rootId,
+		...(background === undefined ? {} : { background }),
 		nodes,
 		contains,
 		dependsOn,

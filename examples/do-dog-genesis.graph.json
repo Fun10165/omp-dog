@@ -2,6 +2,7 @@
 	"schemaVersion": "0.9",
 	"id": "do-dog-genesis",
 	"root": "root",
+	"background": "background.md",
 	"nodes": {
 		"root": {
 			"kind": "composite",
@@ -97,7 +98,7 @@
 			"target": "generated-dog.graph.json",
 			"verifier": {
 				"mode": "agentic",
-				"instruction": "查看每个中间节点:它是否在用逻辑(全部/任一/至少N)与'整体断言'组织其子项,而不是描述'阶段/流程/先决步骤'?发现工序式中间层即 fail,给证据。"
+				"instruction": "逐个查看有子节点的节点(不是叶子的那些):它的含义应当是「子节点要满足哪些条件」——由完成表达式(全部/任一/至少N)或它自己的一句话整体断言来表达;如果它读起来是在描述先后步骤、阶段推进、或者「先做完A才能做B」这种顺序,判 fail,并指出是哪个节点。给证据。"
 			}
 		},
 		"group-leaves": {

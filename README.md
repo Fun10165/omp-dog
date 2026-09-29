@@ -157,6 +157,12 @@ the session's own; the engine binds it to the bytes and the instruction it was i
   `"path": "src/lib"` for one subtree of it. A ref that does not resolve settles `missing` (so a
   graph can gate on a commit that does not exist yet); a workspace that is not a repository at all
   is a configuration error and throws.
+- `background` (optional) names a workspace-relative markdown file handed to every agentic verifier
+  *before* its instruction: what the system is for, what the artifact under review is meant to solve,
+  and the user's original words. Judgments like "is any essential aspect missing" or "is this branch
+  unrelated to the goal" are unanswerable without it. It is read and frozen at `create`, and its
+  digest is part of every agentic judgment identity, so editing it re-judges the graph. A declared
+  background that cannot be read is an error, never a silent omission.
 - The root is `composite` with `constraint: "hard"`.
 
 The full language and operational rules ship as a skill:
@@ -170,10 +176,12 @@ the project).
 The inheritance anchor is `sha256({object digest, judgment identity})`, where the object
 digest is `sha256:<content hash>` for a file, `tree:<manifest digest>` for a tree, and
 `git:<commit>[:<path>]` for a committed tree, and the judgment identity is the script's
-content hash, or the sha256 of the instruction text. When the anchor matches the graph's most
-recent terminal run and that run has a verification record for the goal, the goal settles
-`inherited` and no verifier runs. Change the object or the instruction and it re-runs. A fresh
-or fully re-verified submission is normal; reuse is what makes iteration cheap.
+content hash, or the sha256 of the instruction text *together with the graph's background
+digest* (a graph with no background hashes exactly as it did before that field existed).
+When the anchor matches the graph's most recent terminal run and that run has a verification
+record for the goal, the goal settles `inherited` and no verifier runs. Change the object,
+the instruction, or the background and it re-runs. A fresh or fully re-verified submission is
+normal; reuse is what makes iteration cheap.
 
 The prefixes never collide, which is what makes each scheme change a deliberate migration: records
 written while directory targets were `.tar` archives do not match the tree anchors, and a `.tar`

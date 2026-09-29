@@ -23,7 +23,7 @@ import type {
 	VerificationRecord,
 	VerifierShape,
 } from "./model.ts";
-import { DogRepository, captureTarget } from "./storage.ts";
+import { DogRepository, captureTarget, readWorkspaceBackground } from "./storage.ts";
 import {
 	runPlan,
 	type AgenticRunner,
@@ -94,6 +94,10 @@ export class DogEngine {
 			options.captureBaseDir !== undefined && options.captureBaseDir.length > 0
 				? [options.captureBaseDir, this.config.workspaceRoot]
 				: [this.config.workspaceRoot];
+		const background =
+			graph.background === undefined
+				? undefined
+				: await readWorkspaceBackground(captureRoots, graph.background, this.config.maxSandboxBytes);
 		for (const [goalId, node] of Object.entries(graph.nodes)) {
 			if (node.verifier === undefined) continue;
 			const target = requireTarget(node.target, goalId);
@@ -106,14 +110,19 @@ export class DogEngine {
 			acceptancePlans[goalId] = {
 				goalId,
 				verifier: node.verifier,
-				judgment: this.judgmentOf(node.verifier),
+				judgment: this.judgmentOf(node.verifier, background?.sha256),
 				target,
 				objectPath: input.path,
 				input,
 			};
 		}
 		const graphDigest = sha256Json({ input: graph, acceptancePlans });
-		const compiled: CompiledGraph = { input: graph, graphDigest, acceptancePlans };
+		const compiled: CompiledGraph = {
+			input: graph,
+			graphDigest,
+			acceptancePlans,
+			...(background === undefined ? {} : { background }),
+		};
 		await this.repository.saveGraph(compiled);
 		return compiled;
 	}
@@ -174,7 +183,7 @@ export class DogEngine {
 				const settled = await runPlan(
 					plan,
 					{ workspace: prepared.workspace, inputPath: prepared.inputPath },
-					this.verifierTarget(compiled.input, plan),
+					this.verifierTarget(compiled, plan),
 					{ runId, goalId, signal },
 					this.programmatic,
 					this.agentic,
@@ -203,7 +212,7 @@ export class DogEngine {
 					const settled = await runPlan(
 						plan,
 						{ workspace: prepared.workspace, inputPath: prepared.inputPath },
-						this.verifierTarget(compiled.input, plan),
+						this.verifierTarget(compiled, plan),
 						{ runId, goalId, signal },
 						this.programmatic,
 						this.agentic,
@@ -327,11 +336,11 @@ export class DogEngine {
 		await Promise.allSettled(compositeInFlight);
 	}
 
-	private verifierTarget(input: DogGraphInput, plan: AcceptancePlan): VerifierTarget {
+	private verifierTarget(compiled: CompiledGraph, plan: AcceptancePlan): VerifierTarget {
 		const captured = plan.input;
 		return {
 			goalId: plan.goalId,
-			title: input.nodes[plan.goalId]?.title ?? plan.goalId,
+			title: compiled.input.nodes[plan.goalId]?.title ?? plan.goalId,
 			target: plan.objectPath,
 			isDirectory: captured?.packed === true,
 			...(captured?.git === undefined
@@ -339,6 +348,7 @@ export class DogEngine {
 				: {
 						provenance: `git ${captured.git.ref} @ ${captured.git.commit.slice(0, 12)}${captured.git.path.length === 0 ? "" : ` (path: ${captured.git.path})`}`,
 					}),
+			...(compiled.background === undefined ? {} : { background: compiled.background.text }),
 			...(captured === undefined || !captured.exists
 				? {}
 				: { byteLength: captured.byteLength, sha256: captured.sha256 }),
@@ -368,12 +378,22 @@ export class DogEngine {
 		};
 	}
 
-	private judgmentOf(verifier: VerifierShape): AcceptancePlan["judgment"] {
+	/**
+	 * A judgment's identity. For an agentic goal the instruction *and* the frozen
+	 * background make up the standard, so editing either re-judges the graph; a
+	 * graph without a background hashes exactly as it did before the field existed,
+	 * which keeps existing anchors valid.
+	 */
+	private judgmentOf(verifier: VerifierShape, backgroundDigest: string | undefined): AcceptancePlan["judgment"] {
 		if (verifier.mode === "programmatic") {
 			const scriptPath = resolveScriptPath(this.config.scriptsDirectory, verifier.script);
 			return { mode: "programmatic", script: verifier.script, scriptDigest: readScriptDigest(scriptPath) };
 		}
-		return { mode: "agentic", instructionHash: `sha256:${sha256Json({ instruction: verifier.instruction })}` };
+		const payload =
+			backgroundDigest === undefined
+				? { instruction: verifier.instruction }
+				: { instruction: verifier.instruction, background: backgroundDigest };
+		return { mode: "agentic", instructionHash: `sha256:${sha256Json(payload)}` };
 	}
 
 	private parse(value: unknown): DogGraphInput {

@@ -27,6 +27,8 @@ export interface BriefOptions {
 	readonly objectIsDirectory: boolean;
 	/** Where the object was frozen from, when that is worth naming (a git ref). */
 	readonly provenance?: string;
+	/** Frozen background text every verifier reads before the instruction. */
+	readonly background?: string;
 }
 
 /** The exact assignment one verifier session receives. */
@@ -35,6 +37,13 @@ export function buildVerifierBrief(options: BriefOptions): string {
 	const lines = [
 		`You are the verifier for DoG goal "${options.goalId}" (${options.title}).`,
 		"",
+		...(options.background === undefined
+			? []
+			: [
+					"Background (what the thing you are judging is for; read it before the instruction):",
+					options.background.trim(),
+					"",
+				]),
 		`Object: the ${shape} \`${options.objectPath}\` in your working directory. Judge those bytes and nothing else.`,
 		...(options.objectBytes === undefined ? [] : [`Size: ${options.objectBytes} bytes.`]),
 		...(options.objectSha256 === undefined ? [] : [`sha256: ${options.objectSha256}`]),

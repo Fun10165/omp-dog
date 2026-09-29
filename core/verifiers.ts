@@ -21,6 +21,8 @@ export interface VerifierTarget {
 	readonly isDirectory: boolean;
 	/** Where the object came from when that is not a live path (a git ref). */
 	readonly provenance?: string;
+	/** Frozen background the graph wants every agentic verifier to read first. */
+	readonly background?: string;
 	readonly byteLength?: number;
 	readonly sha256?: string;
 }

@@ -45,7 +45,12 @@ omp-dog host --project . --model <m>          # 起一个会话,并在会话里�
 
 ## 图(schemaVersion `0.9`)
 
-顶层 6 个必填字段:`schemaVersion` / `id` / `root` / `nodes` / `contains` / `dependsOn`。
+顶层 6 个必填字段:`schemaVersion` / `id` / `root` / `nodes` / `contains` / `dependsOn`;
+可选的第 7 个是 `background`——一个**工作区相对的 md 文件**,写给所有 agentic 验证者看:
+这套系统是干什么的、这份交付物要解决什么、用户的**原话**是什么。没有它,
+「有没有漏掉本质方面」「有没有与目标无关的分支」这类判据根本没法判。
+它会在 `create` 时被读入并冻结,摘要算进每条 agentic 判据的身份:改了它 = 换了标准 = 全部重判;
+声明了却读不到 = 报错(不会静默忽略)。
 
 **节点两种**:
 

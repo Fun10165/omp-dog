@@ -22,9 +22,21 @@
 - **依赖边**:`content-group` 依赖 `file-nonempty`(`source` depends on `target`)
 - **失败传播**:任一 hard 子项失败 → 该组失败 → 根失败;`tolerable` 项不影响根
 
-## 3. `do-dog-genesis.graph.json` — 大图演示(24 个节点)
+## 3. `do-dog-genesis.graph.json` — 元图（把关「一张生成的 DoG 图」）
 
-以「生成 DoG 图自身」为验收对象的示例,用来看多节点图在报告里的形状。
+19 个节点（13 叶 + 6 组合），全部判据都是 agentic，对象是 **`generated-dog.graph.json`**；
+图级 `background: "background.md"` 给所有验证者提供背景（DoG 是什么、这份交付物要解决什么、用户原话）。
+
+跑它之前，工作区里要有两样东西：
+
+- `generated-dog.graph.json` — 待评的那张图；
+- `background.md` — 从 [`do-dog-genesis.background.md`](do-dog-genesis.background.md) 拷贝并填写
+  （它是模板：DoG 的用途已经写好，另两节留给这次提交）。
+
+```bash
+omp-dog create <repo>/examples/do-dog-genesis.graph.json --project .
+omp-dog run do-dog-genesis --project .     # 14 条判据 = 14 个验证会话（并发 4 时约数分钟）
+```
 
 ## 4. `team-sync-report.graph.json` — 汇报质量门禁
 

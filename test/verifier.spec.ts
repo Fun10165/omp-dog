@@ -71,7 +71,7 @@ describe("agentic kernel", () => {
 		expect(verdict.sessionFile).toBe(join(sessionRoot, "run-1", "leaf", "fake-session.jsonl"));
 	});
 
-	it("passes the frozen object and the instruction in the brief", async () => {
+	it("passes the frozen object, the background, and the instruction in the brief", async () => {
 		const root = await workspace();
 		const sessionRoot = join(root, "sessions");
 		const record = join(root, "record.json");
@@ -87,16 +87,20 @@ describe("agentic kernel", () => {
 				title: "smoke leaf",
 				target: "artifact.txt",
 				isDirectory: false,
+				background: "# Background\n\nDoG turns a non-formal goal into verified subgoals.",
 			},
 			{ runId: "run-2", goalId: "leaf" },
 		);
-		const written = JSON.parse(await readFile(record, "utf8")) as { argv: string[]; cwd: string };
+		const written = JSON.parse(await readFile(record, "utf8")) as { argv: string[]; cwd: string; prompt: string };
 		expect(written.cwd).toBe(await realpath(root));
 		for (const flag of ["--no-extensions", "--no-skills", "--no-ui"]) expect(written.argv).toContain(flag);
 		expect(written.argv[written.argv.indexOf("--tools") + 1]).toBe("read,grep,glob,find");
 		expect(written.argv[written.argv.indexOf("--session-dir") + 1]).toBe(join(sessionRoot, "run-2", "leaf"));
 		const systemPrompt = written.argv[written.argv.indexOf("--append-system-prompt") + 1];
 		expect(systemPrompt).toContain("DoG verifier");
+		// The background precedes the instruction, and the instruction survives verbatim.
+		expect(written.prompt).toContain("DoG turns a non-formal goal into verified subgoals.");
+		expect(written.prompt.indexOf("Background")).toBeLessThan(written.prompt.indexOf("Instruction (the only standard"));
 	});
 
 	it("settles inconclusive when a finished session never submits a verdict", async () => {

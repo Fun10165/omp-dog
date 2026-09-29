@@ -13,6 +13,7 @@ import {
 	type CapturedInput,
 	type CompiledGraph,
 	type DogRun,
+	type FrozenBackground,
 	type TargetSpec,
 } from "./model.ts";
 
@@ -59,6 +60,7 @@ export class DogRepository {
 				graphDigest: compiled.graphDigest,
 				input: compiled.input,
 				acceptancePlans: compiled.acceptancePlans,
+				...(compiled.background === undefined ? {} : { background: compiled.background }),
 			});
 			await atomicWriteJson(join(this.rootPath, "graph-index", `${safeKey(compiled.input.id)}.json`), {
 				graphId: compiled.input.id,
@@ -80,6 +82,7 @@ export class DogRepository {
 			graphDigest: string;
 			input: CompiledGraph["input"];
 			acceptancePlans: Record<string, AcceptancePlan>;
+			background?: FrozenBackground;
 		}>(join(this.rootPath, "graphs", `${index.graphDigest}.json`));
 		if (sha256Json({ input: record.input, acceptancePlans: record.acceptancePlans }) !== index.graphDigest) {
 			throw new Error(`invalid persisted graph record ${index.graphDigest}`);
@@ -92,7 +95,12 @@ export class DogRepository {
 			acceptancePlans[goalId] =
 				typeof target === "string" ? { ...plan, target: { kind: "path", path: target }, objectPath: target } : plan;
 		}
-		return { input: record.input, graphDigest: record.graphDigest, acceptancePlans };
+		return {
+			input: record.input,
+			graphDigest: record.graphDigest,
+			acceptancePlans,
+			...(record.background === undefined ? {} : { background: record.background }),
+		};
 	}
 
 	/** Enumerate immutable graph revisions, newest ID first. */
@@ -465,6 +473,31 @@ export async function resolveWorkspacePath(workspaceRoot: string, relPath: strin
 	if (!rootStat.isDirectory()) throw new Error(`workspace root ${workspaceRoot} is not a directory`);
 	const canonicalRoot = await realpath(rootPath);
 	return resolveBoundPath(canonicalRoot, lexicalRelative);
+}
+
+/**
+ * Read the graph's background document from the workspace. Unlike a target it is
+ * not optional: a graph that declares one and cannot find it is a configuration
+ * error, because silently dropping it would weaken every judgment in the graph.
+ */
+export async function readWorkspaceBackground(
+	captureRoots: readonly string[],
+	path: string,
+	maxBytes: number,
+): Promise<FrozenBackground> {
+	for (const root of captureRoots) {
+		try {
+			const absolute = await resolveWorkspacePath(root, path);
+			const text = await readFile(absolute, "utf8");
+			if (Buffer.byteLength(text, "utf8") > maxBytes) {
+				throw new Error(`background ${path} exceeds ${maxBytes} bytes`);
+			}
+			return { path, sha256: sha256Json({ text }), text };
+		} catch (error) {
+			if (!isMissing(error)) throw error;
+		}
+	}
+	throw new Error(`background file not found: ${path}`);
 }
 
 /**

@@ -95,6 +95,14 @@ export interface DogGraphInput {
 	readonly schemaVersion: typeof DOG_SCHEMA_VERSION;
 	readonly id: string;
 	readonly root: GoalId;
+	/**
+	 * Workspace-relative markdown file handed to every agentic verifier, before
+	 * the instruction. Use it for what the graph itself cannot say: what the system
+	 * is for, what the artifact under review is meant to solve, and the original
+	 * words the work started from. Its content is part of the judgment identity, so
+	 * editing it re-judges the graph.
+	 */
+	readonly background?: string;
 	readonly nodes: Record<GoalId, GoalNodeInput>;
 	readonly contains: readonly ContainsEdge[];
 	readonly dependsOn: readonly DependencyEdge[];
@@ -197,6 +205,15 @@ export interface CompiledGraph {
 	readonly input: DogGraphInput;
 	readonly graphDigest: string;
 	readonly acceptancePlans: Readonly<Record<GoalId, AcceptancePlan>>;
+	/** The background, read and frozen at compile time (digest included in judgments). */
+	readonly background?: FrozenBackground;
+}
+
+/** One frozen background document: where it came from, and the bytes it had. */
+export interface FrozenBackground {
+	readonly path: string;
+	readonly sha256: string;
+	readonly text: string;
 }
 
 export interface DogRun {

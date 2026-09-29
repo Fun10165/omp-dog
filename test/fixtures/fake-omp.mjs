@@ -62,6 +62,12 @@ function handle(frame) {
 			return;
 		case "prompt": {
 			promptId = frame.id ?? null;
+			if (recordPath !== undefined && recordPath.length > 0) {
+				writeFileSync(
+					recordPath,
+					JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), prompt: frame.message }),
+				);
+			}
 			respond(frame.id, "prompt", { agentInvoked: true });
 			setTimeout(() => {
 				if (submitNothing || verdictArguments === undefined) {

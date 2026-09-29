@@ -384,6 +384,56 @@ describe("engine", () => {
 		expect(peak).toBe(2);
 	});
 
+	it("freezes the graph background and folds it into the judgment identity", async () => {
+		const root = await fixtureRoot();
+		const backgroundPath = join(root, "background.md");
+		await writeFile(backgroundPath, "# what this is\n\nDoG turns a non-formal goal into verified subgoals.\n");
+		const { runner, calls } = recordingAgentic(() => ({ state: "pass", evidence: {} }));
+		const fixture = await makeFixture(root, { agentic: runner });
+		const withBackground = (id: string): Record<string, unknown> => ({
+			...graph(
+				{
+					root: compositeNode({ op: "all", items: [{ op: "ref", id: "leaf" }] }),
+					leaf: leafNode({ verifier: { mode: "agentic", instruction: "judge the object" } }),
+				},
+				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
+				id,
+			),
+			background: "background.md",
+		});
+
+		const compiled = await fixture.engine.create(withBackground("with-background"), { captureBaseDir: root });
+		expect(compiled.background?.text).toContain("DoG turns a non-formal goal");
+		expect(compiled.background?.sha256).toMatch(/^[a-f0-9]{64}$/);
+
+		const first = await fixture.engine.run(compiled.input.id);
+		expect(first.goals.leaf?.state).toBe("success");
+		expect(calls[0]?.target.background).toContain("DoG turns a non-formal goal");
+
+		// Same instruction, same background: nothing to judge again.
+		const second = await fixture.engine.run(compiled.input.id);
+		expect(second.goals.leaf?.state).toBe("inherited");
+		expect(calls).toHaveLength(1);
+
+		// The background is part of the standard: editing it re-judges the goal.
+		await writeFile(
+			backgroundPath,
+			"# what this is\n\nDoG turns a non-formal goal into verified subgoals, and this changed.\n",
+		);
+		const recompiled = await fixture.engine.create(withBackground("with-background"), { captureBaseDir: root });
+		const third = await fixture.engine.run(recompiled.input.id);
+		expect(third.goals.leaf?.state).toBe("success");
+		expect(calls).toHaveLength(2);
+
+		// A declared background that is not there is a configuration error, not a silent drop.
+		await expect(
+			fixture.engine.create(
+				{ ...withBackground("with-background"), background: "absent.md" },
+				{ captureBaseDir: root },
+			),
+		).rejects.toThrow(/background file not found/);
+	});
+
 	it("cancels every unsettled goal and the run when the signal aborts", async () => {
 		const root = await fixtureRoot();
 		const fixture = await makeFixture(root, { programmatic: stubProgrammatic() });
