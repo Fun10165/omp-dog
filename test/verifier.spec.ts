@@ -104,10 +104,16 @@ describe("agentic kernel", () => {
 		// The background precedes the instruction, in tier order, and the instruction survives verbatim.
 		expect(written.prompt).toContain("DoG turns a non-formal goal into verified subgoals.");
 		expect(written.prompt).toContain("We are judging the graph that gates report.md.");
-		expect(written.prompt.indexOf("what DoG is")).toBeLessThan(written.prompt.indexOf("what this submission is"));
-		expect(written.prompt.indexOf("what this submission is")).toBeLessThan(
-			written.prompt.indexOf("Instruction (the only standard"),
-		);
+		const generalAt = written.prompt.indexOf("the judgment contract every verifier works under");
+		const specificAt = written.prompt.indexOf("what this submission is");
+		const instructionAt = written.prompt.indexOf("Instruction (the only standard");
+		// Both labels must actually be present: an absent label would make a bare
+		// `indexOf` comparison pass by accident and hide a broken brief.
+		expect(generalAt).toBeGreaterThanOrEqual(0);
+		expect(specificAt).toBeGreaterThanOrEqual(0);
+		expect(instructionAt).toBeGreaterThanOrEqual(0);
+		expect(generalAt).toBeLessThan(specificAt);
+		expect(specificAt).toBeLessThan(instructionAt);
 	});
 
 	it("settles inconclusive when a finished session never submits a verdict", async () => {

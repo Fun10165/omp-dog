@@ -39,7 +39,11 @@ export function buildVerifierBrief(options: BriefOptions): string {
 		"",
 		...(options.background?.general === undefined
 			? []
-			: ["Background — what DoG is and how to read what you are judging:", options.background.general.trim(), ""]),
+			: [
+					"Background — the judgment contract every verifier works under, and how to read what you are judging:",
+					options.background.general.trim(),
+					"",
+				]),
 		...(options.background?.specific === undefined
 			? []
 			: ["Background — what this submission is (why it is being judged now):", options.background.specific.trim(), ""]),
