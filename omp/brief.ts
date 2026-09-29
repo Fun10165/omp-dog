@@ -37,7 +37,7 @@ export function buildVerifierBrief(options: BriefOptions): string {
 		...(options.objectBytes === undefined ? [] : [`Size: ${options.objectBytes} bytes.`]),
 		...(options.objectSha256 === undefined ? [] : [`sha256: ${options.objectSha256}`]),
 		options.objectIsDirectory
-			? "The directory is the frozen capture, unpacked; its contents are complete and final."
+			? "That directory is the frozen capture; its contents are complete and final."
 			: "That file is the frozen capture; it is complete and final.",
 		"",
 		"Instruction (the only standard you judge by):",

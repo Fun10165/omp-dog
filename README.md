@@ -81,11 +81,11 @@ omp --mode rpc --no-ui --no-extensions --no-skills --no-rules \
     --session-dir <evidence dir> --append-system-prompt "<prompts/verifier.md>"
 ```
 
-The engine places the captured bytes in that working directory (a directory capture is
-unpacked) and the brief names the object, its byte size, and its sha256 — so a verifier
-judges the *frozen* bytes, never the live tree. A session that never submits a verdict, or
-that exceeds its budget, settles `inconclusive` and the goal becomes `needs_human`: a
-missing verdict can never pass a gate.
+The engine places the captured object in that working directory (a directory capture is
+cloned there as a tree) and the brief names the object, its byte size, and its sha256 — so
+a verifier judges the *frozen* bytes, never the live tree. A session that never submits a
+verdict, or that exceeds its budget, settles `inconclusive` and the goal becomes
+`needs_human`: a missing verdict can never pass a gate.
 
 **Freezing is clone-based.** A file target is hashed by streaming, then placed with the
 first mechanism that actually clones: Node's `COPYFILE_FICLONE_FORCE`, then the platform's
@@ -96,10 +96,17 @@ byte-copies for the plain clone flag, so `cp -c` is what keeps Node cloning. A c
 under 2 ms and no extra space; a byte copy costs 120–300 ms and the full size. The copy
 lands under a temporary name and is renamed into place, because `clonefile` refuses an
 existing destination and the rename keeps replacement atomic. `OMP_DOG_NO_COW=1` skips both
-clone attempts. Before materializing, the stored bytes are re-hashed against the manifest,
-so a corrupted store is refused rather than judged. Directory targets are packed into one
-`.tar` whose members keep their relative paths, and unpacked into the verifier's working
-directory.
+clone attempts. Before materializing, the stored bytes are re-hashed against what was
+recorded, so a corrupted store is refused rather than judged.
+
+**A directory target is a tree, not an archive.** Every regular file is hashed, and the
+tree is frozen by cloning it (`cp -cR` on APFS, `cp -a --reflink=always` on Linux, plain
+recursive copy otherwise); the verifier's working directory receives that clone, and a
+directory capture is handed to both kernels as the directory itself. The object's identity
+is `tree:` plus the digest of the sorted manifest (relative path, size, content hash) — so
+touching a file's mtime no longer moves the anchor the way a `.tar` header did. Captures
+written by earlier revisions as `.tar` are still readable: the engine detects the legacy
+form and unpacks it.
 
 **Provenance.** Every agentic verdict records the verifier session's transcript path, so
 "who judged this, and on what evidence" is answerable after the fact. The verdict itself is
@@ -130,7 +137,7 @@ the session's own; the engine binds it to the bytes and the instruction it was i
 - `contains` carries `required`, `failure` (`fatal` / `tolerable` / `degrade`) and
   `degradeTo`; failures propagate upward until a relation tolerates them.
 - `dependsOn` reads "{source} waits for {target}": a scheduling gate, nothing more.
-- `target` is a workspace-relative path (file, or directory → packed into a `.tar`).
+- `target` is a workspace-relative path (a file, or a directory frozen as a cloned tree).
 - The root is `composite` with `constraint: "hard"`.
 
 The full language and operational rules ship as a skill:
@@ -141,12 +148,18 @@ the project).
 
 ## Inheritance
 
-The inheritance anchor is `sha256({object digest, judgment identity})`, where the judgment
-identity is the script's content hash, or the sha256 of the instruction text. When the
-anchor matches the graph's most recent terminal run and that run has a verification record
-for the goal, the goal settles `inherited` and no verifier runs. Change the object or the
-instruction and it re-runs. A fresh or fully re-verified submission is normal; reuse is
+The inheritance anchor is `sha256({object digest, judgment identity})`, where the object
+digest is `sha256:<content hash>` for a file and `tree:<manifest digest>` for a tree, and
+the judgment identity is the script's content hash, or the sha256 of the instruction text.
+When the anchor matches the graph's most recent terminal run and that run has a verification
+record for the goal, the goal settles `inherited` and no verifier runs. Change the object or
+the instruction and it re-runs. A fresh or fully re-verified submission is normal; reuse is
 what makes iteration cheap.
+
+The two prefixes never collide, which is what makes the tree scheme a deliberate migration:
+records written while directory targets were `.tar` archives do not match the new anchors, so
+the first run after the switch re-judges every directory-target goal once. File-target goals
+are unaffected and keep inheriting.
 
 ## Limits (read before trusting a green root)
 
@@ -187,8 +200,8 @@ dev/smoke.sh        the end-to-end gate
 
 ## Caveats
 
-- The engine shells out to `tar` for directory captures and their unpacking, and to `cp` only
-  when Node's own clone flag cannot clone (see the measured note above).
+- The engine shells out to `cp` for tree clones (with a plain recursive copy as the fallback)
+  and to `tar` only to read captures stored by earlier revisions as archives.
 - Cloning is an optimization with a real fallback, not a requirement: every path behaves identically
   when the filesystem cannot clone. Set `OMP_DOG_NO_COW=1` where cloning is unreliable.
 - The script library is **CommonJS** while the repository is ESM, so `scripts/` carries its

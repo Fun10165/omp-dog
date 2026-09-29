@@ -109,15 +109,21 @@ export interface GraphLimits {
 	readonly maxExpressionDepth: number;
 }
 
-/** One captured object (file, or packed .tar for a collection). */
+/** One captured object (file, or a collection stored as a tree). */
 export interface CapturedInput {
 	readonly path: string;
 	readonly digest: string;
 	readonly exists: boolean;
 	readonly byteLength: number;
 	readonly sha256: string;
-	/** True when the capture is a .tar of a directory/collection. */
+	/** True when the capture is a collection rather than a single file. */
 	readonly packed?: boolean;
+	/**
+	 * How the stored bytes are shaped: a cloned file, a tree of cloned files
+	 * (digest `tree:…`), or a legacy `.tar` (digest `sha256:…`, `packed`).
+	 * Absent means a single file.
+	 */
+	readonly form?: "file" | "tree" | "tar";
 }
 
 /** Deterministic or agentic: the judgment identity half of the inheritance anchor. */

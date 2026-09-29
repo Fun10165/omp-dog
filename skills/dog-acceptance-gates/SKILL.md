@@ -50,7 +50,7 @@ cd <项目目录>
 **节点两种**:
 
 - `leaf`:`{kind, title, constraint: "hard"|"soft", target, verifier}` — `target` 是**工作区相对路径**
-  (文件,或目录→引擎打包成 tar 并解包给验证会话),`verifier` 必填。
+  (文件,或目录→引擎冻结成一棵克隆树交给验证会话),`verifier` 必填。
 - `composite`:`{kind, title, constraint, target, completion, verifier?}` — `completion` 组合子目标;
   可选的 `verifier` 是**整体断言**(子树全结算后再判一次,**只降不升**)。
 

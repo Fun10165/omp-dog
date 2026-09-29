@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { constants, createReadStream, readdirSync } from "node:fs";
+import { constants, createReadStream } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { canonicalJson, sha256Json } from "./json.ts";
@@ -211,11 +211,30 @@ export class DogRepository {
 		await atomicWriteJson(join(this.rootPath, "captures", `${key}.json`), input);
 	}
 
-	/** Re-hash one captured input against its manifest, streaming the stored bytes. */
+	/** Store one captured tree by cloning it, keyed by its manifest digest. */
+	async putCaptureTree(input: CapturedInput, sourceDir: string, manifest: TreeManifest): Promise<void> {
+		await this.initialize();
+		const key = capturedKey(input.digest);
+		const directory = join(this.rootPath, "captures", key);
+		const manifestPath = join(directory, "manifest.json");
+		const stored = await stat(manifestPath).catch(() => undefined);
+		if (stored !== undefined) return; // content-addressed: this tree is already frozen
+		await rm(directory, { recursive: true, force: true });
+		await cloneOrCopyTree(sourceDir, join(directory, "tree"));
+		await atomicWriteJson(manifestPath, manifest);
+	}
+
+	/** Re-hash one captured input against what was recorded for it. */
 	async verifyCapture(input: CapturedInput): Promise<void> {
 		if (!input.exists) throw new Error(`captured input ${input.digest} represents a missing file`);
-		const path = join(this.rootPath, "captures", `${capturedKey(input.digest)}.bin`);
+		const key = capturedKey(input.digest);
 		const mismatch = `captured input integrity mismatch for ${input.digest}`;
+		if (captureForm(input) === "tree") {
+			const stored = await readTree(join(this.rootPath, "captures", key, "tree"), Number.MAX_SAFE_INTEGER);
+			if (manifestDigest(stored) !== input.sha256) throw new Error(mismatch);
+			return;
+		}
+		const path = join(this.rootPath, "captures", `${key}.bin`);
 		const sha256 = await hashFile(path);
 		if (sha256 !== input.sha256) throw new Error(mismatch);
 		const metadata = await stat(path);
@@ -244,15 +263,22 @@ export class DogRepository {
 		// Re-hash the stored object, then place it by clone: the verifier gets a
 		// snapshot of exactly those bytes without a second full write of them.
 		await this.verifyCapture(input);
-		const blob = join(this.rootPath, "captures", `${capturedKey(input.digest)}.bin`);
-		if (input.packed !== true) {
+		const key = capturedKey(input.digest);
+		const form = captureForm(input);
+		if (form === "tree") {
+			await cloneOrCopyTree(join(this.rootPath, "captures", key, "tree"), inputPath);
+			return { directory, workspace, objectPath: inputPath, inputPath, sessionDirectory };
+		}
+		const blob = join(this.rootPath, "captures", `${key}.bin`);
+		if (form === "file") {
 			await cloneOrCopyFile(blob, inputPath);
 			return { directory, workspace, objectPath: inputPath, inputPath, sessionDirectory };
 		}
+		// Legacy capture: a `.tar` whose members are `<target>/…`, so it must be
+		// unpacked into the workspace itself — unpacking into `inputPath` would
+		// nest the tree twice.
 		const archive = `${inputPath}.tar`;
 		await cloneOrCopyFile(blob, archive);
-		// The archive's members are `<target>/…`, so it must be unpacked into the
-		// workspace itself — unpacking into `inputPath` would nest the tree twice.
 		await mkdir(workspace, { recursive: true });
 		execFileSync("tar", ["-xf", archive, "-C", workspace], { stdio: "pipe" });
 		return { directory, workspace, objectPath: inputPath, inputPath: archive, sessionDirectory };
@@ -266,6 +292,10 @@ export class DogRepository {
 
 /** The platform clone flag: APFS `clonefile` through `cp -c`, Linux reflink through `cp --reflink=always`. */
 const CLONE_FLAG = process.platform === "darwin" ? "-c" : "--reflink=always";
+
+/** Recursive forms of the same two mechanisms; the plain variants are the fallback. */
+const CLONE_TREE_FLAGS = process.platform === "darwin" ? ["-cR"] : ["-a", "--reflink=always"];
+const COPY_TREE_FLAGS = process.platform === "darwin" ? ["-R"] : ["-a"];
 
 /**
  * Place `source` at `destination`, sharing data blocks with the source when the
@@ -312,6 +342,102 @@ async function hashFile(path: string): Promise<string> {
 	const hash = createHash("sha256");
 	for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
 	return hash.digest("hex");
+}
+
+/** One regular file inside a captured tree. */
+interface TreeFile {
+	readonly path: string;
+	readonly byteLength: number;
+	readonly sha256: string;
+}
+
+/**
+ * The frozen description of a captured tree. Its digest — sorted paths, sizes
+ * and content hashes — is the object's identity, so unlike a `.tar` it does not
+ * move when unrelated metadata (mtime, ownership, tar headers) changes.
+ */
+export interface TreeManifest {
+	readonly schemaVersion: "0.1";
+	readonly kind: "tree";
+	readonly files: readonly TreeFile[];
+	readonly totalBytes: number;
+}
+
+/** Walk a tree in a deterministic order; symlinks and special files are refused. */
+async function readTree(rootDir: string, maxBytes: number): Promise<TreeManifest> {
+	const entries = await readdir(rootDir, { withFileTypes: true, recursive: true });
+	const found = entries
+		.filter((entry) => !entry.isDirectory())
+		.map((entry) => {
+			const absolute = join(entry.parentPath, entry.name);
+			return { entry, absolute, path: relative(rootDir, absolute) };
+		})
+		.sort((left, right) => left.path.localeCompare(right.path));
+	const files: TreeFile[] = [];
+	let totalBytes = 0;
+	for (const item of found) {
+		if (item.entry.isSymbolicLink()) throw new Error(`target tree contains a symbolic link: ${item.path}`);
+		if (!item.entry.isFile()) throw new Error(`target tree contains a non-regular file: ${item.path}`);
+		const metadata = await stat(item.absolute);
+		totalBytes += metadata.size;
+		if (totalBytes > maxBytes) throw new Error(`target tree exceeds ${maxBytes} bytes`);
+		files.push({ path: item.path, byteLength: metadata.size, sha256: await hashFile(item.absolute) });
+	}
+	return { schemaVersion: "0.1", kind: "tree", files, totalBytes };
+}
+
+/** The identity of a tree: its sorted file list, not its bytes on disk. */
+function manifestDigest(manifest: TreeManifest): string {
+	return sha256Json({ files: manifest.files, totalBytes: manifest.totalBytes });
+}
+
+/** How one capture is stored; records written before `form` existed are inferred. */
+function captureForm(input: CapturedInput): "file" | "tree" | "tar" {
+	if (input.form !== undefined) return input.form;
+	return input.packed === true ? "tar" : "file";
+}
+
+/**
+ * Place a directory tree at `destination`, cloning each file when the platform
+ * can (`cp -cR` on APFS, `cp -a --reflink=always` elsewhere) and copying when it
+ * cannot. Node's own clone flag has no recursive form, so this is a `cp` call —
+ * verified against the platform's own behaviour rather than assumed.
+ */
+export async function cloneOrCopyTree(source: string, destination: string): Promise<"clone" | "copy"> {
+	await rm(destination, { recursive: true, force: true });
+	await mkdir(dirname(destination), { recursive: true });
+	if (process.env.OMP_DOG_NO_COW !== "1") {
+		try {
+			execFileSync("cp", [...CLONE_TREE_FLAGS, source, destination], { stdio: "pipe" });
+			return "clone";
+		} catch {
+			await rm(destination, { recursive: true, force: true });
+		}
+	}
+	execFileSync("cp", [...COPY_TREE_FLAGS, source, destination], { stdio: "pipe" });
+	return "copy";
+}
+
+/** Capture one directory: hash every file, then freeze the tree by cloning it. */
+async function captureTree(
+	absolutePath: string,
+	target: string,
+	maxBytes: number,
+	repository: DogRepository,
+): Promise<CapturedInputFile> {
+	const manifest = await readTree(absolutePath, maxBytes);
+	const digest = manifestDigest(manifest);
+	const input: CapturedInput = {
+		path: target,
+		digest: `tree:${digest}`,
+		exists: true,
+		byteLength: manifest.totalBytes,
+		sha256: digest,
+		packed: true,
+		form: "tree",
+	};
+	await repository.putCaptureTree(input, absolutePath, manifest);
+	return { input };
 }
 
 /** Resolve one workspace-relative path to an absolute path, never accepting escapes. */
@@ -363,20 +489,7 @@ export async function captureWorkspaceTarget(
 				return { input };
 			}
 			if (!metadata.isDirectory()) throw new Error(`target ${target} is not a regular file or directory`);
-			assertTreeSafe(resolve(root), absolutePath);
-			const bytes = execFileSync("tar", ["-C", resolve(root), "-cf", "-", target], { maxBuffer: maxBytes * 4 });
-			if (bytes.byteLength > maxBytes) throw new Error(`target ${target} exceeds ${maxBytes} bytes`);
-			const sha256 = createHash("sha256").update(bytes).digest("hex");
-			const input: CapturedInput = {
-				path: target,
-				digest: `sha256:${sha256}`,
-				exists: true,
-				byteLength: bytes.byteLength,
-				sha256,
-				packed: true,
-			};
-			await repository.putCapture(input, bytes);
-			return { input };
+			return await captureTree(absolutePath, target, maxBytes, repository);
 		} catch (error) {
 			if (!isMissing(error)) throw error;
 		}
@@ -390,15 +503,6 @@ export async function captureWorkspaceTarget(
 	};
 	await repository.putCapture(input, undefined);
 	return { input };
-}
-
-/** Reject symbolic links anywhere in the tree before packing (tar would carry them over). */
-function assertTreeSafe(rootPath: string, dirPath: string): void {
-	for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
-		const child = join(dirPath, entry.name);
-		if (entry.isSymbolicLink()) throw new Error(`target tree contains a symbolic link: ${relative(rootPath, child)}`);
-		if (entry.isDirectory()) assertTreeSafe(rootPath, child);
-	}
 }
 
 function capturedKey(digest: string): string {

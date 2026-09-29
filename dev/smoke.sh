@@ -99,12 +99,14 @@ dog create "$work/negative-graph.json" > "$work/negative-create.json"
 dog run "$(graph_id "$work/negative-create.json")" > "$work/negative-run.json" || true
 check "bad sample is blocked" "failure" "$(root_state "$work/negative-run.json")"
 
-echo "case 5 — directory target (packed, cloned, unpacked for the verifier)"
+echo "case 5 — directory target (frozen as a tree, cloned for the verifier)"
 dog create "$work/dir-graph.json" > "$work/dir-create.json"
-check "directory capture is packed" "true" \
-	"$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).acceptancePlans.find(p=>p.goalId==="leaf").digest.startsWith("sha256:")))' "$work/dir-create.json")"
+check "directory capture is a tree" "tree:" \
+	"$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).acceptancePlans.find(p=>p.goalId==="leaf").digest.slice(0,5))' "$work/dir-create.json")"
 dog run "$(graph_id "$work/dir-create.json")" > "$work/dir-run.json"
-check "verifier reads the unpacked tree" "success" "$(root_state "$work/dir-run.json")"
+check "verifier reads the frozen tree" "success" "$(root_state "$work/dir-run.json")"
+dog run "$(graph_id "$work/dir-create.json")" > "$work/dir-rerun.json"
+check "tree leaf inherited on re-run" "leaf" "$(inherited "$work/dir-rerun.json")"
 
 echo
 if [ "$failed" -eq 0 ]; then

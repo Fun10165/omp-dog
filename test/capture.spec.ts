@@ -1,6 +1,7 @@
 /** Freezing one object: content identity, clone placement, integrity, and the copy fallback. */
 
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
@@ -15,6 +16,14 @@ async function scratch(): Promise<string> {
 	roots.push(root);
 	await mkdir(join(root, "store"), { recursive: true });
 	return root;
+}
+
+/** The one stored tree of a fixture, found by listing rather than by re-deriving the key. */
+async function storedTreeFile(root: string, inner: string): Promise<string> {
+	const entries = await readdir(join(root, "store", "captures"));
+	const directory = entries.find((name) => name.startsWith("tree_"));
+	if (directory === undefined) throw new Error("no stored tree in this fixture");
+	return join(root, "store", "captures", directory, "tree", inner);
 }
 
 function planFor(input: AcceptancePlan["input"], target = "artifact.txt"): AcceptancePlan {
@@ -117,18 +126,97 @@ describe("capture", () => {
 		expect(await readFile(destination, "utf8")).toBe("payload\n");
 	});
 
-	it("packs a directory target and hands the verifier the unpacked tree", async () => {
+	it("freezes a directory target as a tree and hands the verifier that tree", async () => {
 		const root = await scratch();
 		await mkdir(join(root, "bundle", "nested"), { recursive: true });
 		await writeFile(join(root, "bundle", "nested", "inside.md"), "hello\n");
 		const repository = new DogRepository(join(root, "store"));
 		const { input } = await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+		expect(input.form).toBe("tree");
 		expect(input.packed).toBe(true);
+		expect(input.digest.startsWith("tree:")).toBe(true);
+		expect(input.byteLength).toBe(6);
 
 		const prepared = await repository.prepareVerification("run-1", "leaf", planFor(input, "bundle"));
-		// The programmatic kernel gets the archive's path; the agentic kernel gets a
-		// working directory in which the tree is already unpacked.
-		expect(prepared.inputPath).toBe(`${prepared.objectPath}.tar`);
+		// A tree capture is handed over as the directory itself, in both kernels.
+		expect(prepared.inputPath).toBe(prepared.objectPath);
+		expect((await stat(prepared.objectPath)).isDirectory()).toBe(true);
 		expect(await readFile(join(prepared.objectPath, "nested", "inside.md"), "utf8")).toBe("hello\n");
+	});
+
+	it("keys a tree by its contents, not by file metadata", async () => {
+		const root = await scratch();
+		await mkdir(join(root, "bundle"), { recursive: true });
+		const file = join(root, "bundle", "inside.md");
+		await writeFile(file, "hello\n");
+		const repository = new DogRepository(join(root, "store"));
+		const { input: first } = await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+
+		// Touching a file is not a change of the object: a `.tar` would move here.
+		const touched = new Date(Date.now() + 60_000);
+		await utimes(file, touched, touched);
+		const { input: second } = await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+		expect(second.digest).toBe(first.digest);
+
+		await writeFile(file, "goodbye\n");
+		const { input: third } = await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+		expect(third.digest).not.toBe(first.digest);
+	});
+
+	it("reuses an already frozen tree instead of cloning it again", async () => {
+		const root = await scratch();
+		await mkdir(join(root, "bundle"), { recursive: true });
+		await writeFile(join(root, "bundle", "inside.md"), "hello\n");
+		const repository = new DogRepository(join(root, "store"));
+		await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+		const stored = await storedTreeFile(root, "inside.md");
+		const before = (await stat(stored)).mtimeMs;
+
+		await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+		expect((await stat(stored)).mtimeMs).toBe(before);
+	});
+
+	it("refuses a stored tree whose bytes no longer match the manifest", async () => {
+		const root = await scratch();
+		await mkdir(join(root, "bundle"), { recursive: true });
+		await writeFile(join(root, "bundle", "inside.md"), "honest\n");
+		const repository = new DogRepository(join(root, "store"));
+		const { input } = await captureWorkspaceTarget([root], "bundle", 1_048_576, repository);
+
+		await writeFile(await storedTreeFile(root, "inside.md"), "forged\n");
+		await expect(repository.verifyCapture(input)).rejects.toThrow(/integrity mismatch/);
+		await expect(repository.prepareVerification("run-1", "leaf", planFor(input, "bundle"))).rejects.toThrow(
+			/integrity mismatch/,
+		);
+	});
+
+	it("refuses a tree that carries a symbolic link", async () => {
+		const root = await scratch();
+		await mkdir(join(root, "bundle"), { recursive: true });
+		await writeFile(join(root, "outside.txt"), "secret\n");
+		await symlink(join(root, "outside.txt"), join(root, "bundle", "link.txt"));
+		const repository = new DogRepository(join(root, "store"));
+		await expect(captureWorkspaceTarget([root], "bundle", 1_048_576, repository)).rejects.toThrow(/symbolic link/);
+	});
+
+	it("still materializes a legacy tar capture", async () => {
+		const root = await scratch();
+		await mkdir(join(root, "bundle"), { recursive: true });
+		await writeFile(join(root, "bundle", "inside.md"), "hello\n");
+		const repository = new DogRepository(join(root, "store"));
+		const bytes = execFileSync("tar", ["-C", root, "-cf", "-", "bundle"]);
+		const input = {
+			path: "bundle",
+			digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+			exists: true,
+			byteLength: bytes.byteLength,
+			sha256: createHash("sha256").update(bytes).digest("hex"),
+			packed: true,
+		} as const;
+		await repository.putCapture(input, bytes);
+
+		const prepared = await repository.prepareVerification("run-1", "leaf", planFor(input, "bundle"));
+		expect(prepared.inputPath.endsWith(".tar")).toBe(true);
+		expect(await readFile(join(prepared.objectPath, "inside.md"), "utf8")).toBe("hello\n");
 	});
 });
