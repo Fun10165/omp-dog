@@ -11,9 +11,18 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "g-work" },
-					{ "op": "ref", "id": "g-collab" },
-					{ "op": "ref", "id": "g-next" }
+					{
+						"op": "ref",
+						"id": "g-work"
+					},
+					{
+						"op": "ref",
+						"id": "g-collab"
+					},
+					{
+						"op": "ref",
+						"id": "g-next"
+					}
 				]
 			},
 			"verifier": {
@@ -29,8 +38,14 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "w-true" },
-					{ "op": "ref", "id": "w-boundary" }
+					{
+						"op": "ref",
+						"id": "w-true"
+					},
+					{
+						"op": "ref",
+						"id": "w-boundary"
+					}
 				]
 			}
 		},
@@ -62,8 +77,14 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "c-affect" },
-					{ "op": "ref", "id": "c-open" }
+					{
+						"op": "ref",
+						"id": "c-affect"
+					},
+					{
+						"op": "ref",
+						"id": "c-open"
+					}
 				]
 			}
 		},
@@ -95,8 +116,14 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "n-plan" },
-					{ "op": "ref", "id": "n-ask" }
+					{
+						"op": "ref",
+						"id": "n-plan"
+					},
+					{
+						"op": "ref",
+						"id": "n-ask"
+					}
 				]
 			}
 		},
@@ -122,15 +149,60 @@
 		}
 	},
 	"contains": [
-		{ "parent": "root", "child": "g-work", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "g-collab", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "g-next", "required": true, "failure": "fatal" },
-		{ "parent": "g-work", "child": "w-true", "required": true, "failure": "fatal" },
-		{ "parent": "g-work", "child": "w-boundary", "required": true, "failure": "fatal" },
-		{ "parent": "g-collab", "child": "c-affect", "required": true, "failure": "fatal" },
-		{ "parent": "g-collab", "child": "c-open", "required": true, "failure": "fatal" },
-		{ "parent": "g-next", "child": "n-plan", "required": true, "failure": "fatal" },
-		{ "parent": "g-next", "child": "n-ask", "required": true, "failure": "fatal" }
+		{
+			"parent": "root",
+			"child": "g-work",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "g-collab",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "g-next",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "g-work",
+			"child": "w-true",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "g-work",
+			"child": "w-boundary",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "g-collab",
+			"child": "c-affect",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "g-collab",
+			"child": "c-open",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "g-next",
+			"child": "n-plan",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "g-next",
+			"child": "n-ask",
+			"required": true,
+			"failure": "fatal"
+		}
 	],
 	"dependsOn": []
 }

@@ -2,7 +2,10 @@
 	"schemaVersion": "0.9",
 	"id": "do-dog-genesis",
 	"root": "root",
-	"background": { "general": "general.md", "specific": "specific.md" },
+	"background": {
+		"general": "general.md",
+		"specific": "specific.md"
+	},
 	"nodes": {
 		"root": {
 			"kind": "composite",
@@ -12,11 +15,26 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "group-root" },
-					{ "op": "ref", "id": "group-layers" },
-					{ "op": "ref", "id": "group-leaves" },
-					{ "op": "ref", "id": "group-engineering" },
-					{ "op": "ref", "id": "group-complete" }
+					{
+						"op": "ref",
+						"id": "group-root"
+					},
+					{
+						"op": "ref",
+						"id": "group-layers"
+					},
+					{
+						"op": "ref",
+						"id": "group-leaves"
+					},
+					{
+						"op": "ref",
+						"id": "group-engineering"
+					},
+					{
+						"op": "ref",
+						"id": "group-complete"
+					}
 				]
 			},
 			"verifier": {
@@ -32,8 +50,14 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "root-from-user" },
-					{ "op": "ref", "id": "root-non-formal" }
+					{
+						"op": "ref",
+						"id": "root-from-user"
+					},
+					{
+						"op": "ref",
+						"id": "root-non-formal"
+					}
 				]
 			}
 		},
@@ -65,9 +89,18 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "same-abstract-plane" },
-					{ "op": "ref", "id": "no-execution-details" },
-					{ "op": "ref", "id": "groups-are-logic" }
+					{
+						"op": "ref",
+						"id": "same-abstract-plane"
+					},
+					{
+						"op": "ref",
+						"id": "no-execution-details"
+					},
+					{
+						"op": "ref",
+						"id": "groups-are-logic"
+					}
 				]
 			}
 		},
@@ -109,9 +142,18 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "one-judgment" },
-					{ "op": "ref", "id": "single-purpose" },
-					{ "op": "ref", "id": "remains-semantic" }
+					{
+						"op": "ref",
+						"id": "one-judgment"
+					},
+					{
+						"op": "ref",
+						"id": "single-purpose"
+					},
+					{
+						"op": "ref",
+						"id": "remains-semantic"
+					}
 				]
 			}
 		},
@@ -153,9 +195,18 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "verifier-addressable" },
-					{ "op": "ref", "id": "composition-complete" },
-					{ "op": "ref", "id": "dependency-direction" }
+					{
+						"op": "ref",
+						"id": "verifier-addressable"
+					},
+					{
+						"op": "ref",
+						"id": "composition-complete"
+					},
+					{
+						"op": "ref",
+						"id": "dependency-direction"
+					}
 				]
 			}
 		},
@@ -197,8 +248,14 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "coverage" },
-					{ "op": "ref", "id": "no-over-design" }
+					{
+						"op": "ref",
+						"id": "coverage"
+					},
+					{
+						"op": "ref",
+						"id": "no-over-design"
+					}
 				]
 			}
 		},
@@ -224,24 +281,114 @@
 		}
 	},
 	"contains": [
-		{ "parent": "root", "child": "group-root", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "group-layers", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "group-leaves", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "group-engineering", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "group-complete", "required": true, "failure": "fatal" },
-		{ "parent": "group-root", "child": "root-from-user", "required": true, "failure": "fatal" },
-		{ "parent": "group-root", "child": "root-non-formal", "required": true, "failure": "fatal" },
-		{ "parent": "group-layers", "child": "same-abstract-plane", "required": true, "failure": "fatal" },
-		{ "parent": "group-layers", "child": "no-execution-details", "required": true, "failure": "fatal" },
-		{ "parent": "group-layers", "child": "groups-are-logic", "required": true, "failure": "fatal" },
-		{ "parent": "group-leaves", "child": "one-judgment", "required": true, "failure": "fatal" },
-		{ "parent": "group-leaves", "child": "single-purpose", "required": true, "failure": "fatal" },
-		{ "parent": "group-leaves", "child": "remains-semantic", "required": true, "failure": "fatal" },
-		{ "parent": "group-engineering", "child": "verifier-addressable", "required": true, "failure": "fatal" },
-		{ "parent": "group-engineering", "child": "composition-complete", "required": true, "failure": "fatal" },
-		{ "parent": "group-engineering", "child": "dependency-direction", "required": true, "failure": "fatal" },
-		{ "parent": "group-complete", "child": "coverage", "required": true, "failure": "fatal" },
-		{ "parent": "group-complete", "child": "no-over-design", "required": true, "failure": "fatal" }
+		{
+			"parent": "root",
+			"child": "group-root",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "group-layers",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "group-leaves",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "group-engineering",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "group-complete",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-root",
+			"child": "root-from-user",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-root",
+			"child": "root-non-formal",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-layers",
+			"child": "same-abstract-plane",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-layers",
+			"child": "no-execution-details",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-layers",
+			"child": "groups-are-logic",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-leaves",
+			"child": "one-judgment",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-leaves",
+			"child": "single-purpose",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-leaves",
+			"child": "remains-semantic",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-engineering",
+			"child": "verifier-addressable",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-engineering",
+			"child": "composition-complete",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-engineering",
+			"child": "dependency-direction",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-complete",
+			"child": "coverage",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-complete",
+			"child": "no-over-design",
+			"required": true,
+			"failure": "fatal"
+		}
 	],
 	"dependsOn": []
 }

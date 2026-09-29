@@ -11,10 +11,22 @@
 			"completion": {
 				"op": "all",
 				"items": [
-					{ "op": "ref", "id": "no-slop" },
-					{ "op": "ref", "id": "dense-fun" },
-					{ "op": "ref", "id": "readable" },
-					{ "op": "ref", "id": "human-qual" }
+					{
+						"op": "ref",
+						"id": "no-slop"
+					},
+					{
+						"op": "ref",
+						"id": "dense-fun"
+					},
+					{
+						"op": "ref",
+						"id": "readable"
+					},
+					{
+						"op": "ref",
+						"id": "human-qual"
+					}
 				]
 			},
 			"verifier": {
@@ -74,11 +86,36 @@
 		}
 	},
 	"contains": [
-		{ "parent": "root", "child": "no-slop", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "dense-fun", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "readable", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "human-qual", "required": true, "failure": "fatal" },
-		{ "parent": "root", "child": "phrase-hint", "required": false, "failure": "tolerable" }
+		{
+			"parent": "root",
+			"child": "no-slop",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "dense-fun",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "readable",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "human-qual",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "root",
+			"child": "phrase-hint",
+			"required": false,
+			"failure": "tolerable"
+		}
 	],
 	"dependsOn": []
 }
