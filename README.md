@@ -81,11 +81,23 @@ omp --mode rpc --no-ui --no-extensions --no-skills --no-rules \
     --session-dir <evidence dir> --append-system-prompt "<prompts/verifier.md>"
 ```
 
-The engine copies the captured bytes into that working directory (a directory capture is
+The engine places the captured bytes in that working directory (a directory capture is
 unpacked) and the brief names the object, its byte size, and its sha256 — so a verifier
 judges the *frozen* bytes, never the live tree. A session that never submits a verdict, or
 that exceeds its budget, settles `inconclusive` and the goal becomes `needs_human`: a
 missing verdict can never pass a gate.
+
+**Freezing is clone-based.** A file target is hashed by streaming, then *cloned* into the
+store (APFS `clonefile` via `cp -c`, Linux reflink via `cp --reflink=always`), so a large
+object is never buffered in memory or written twice; the same clone places it in the
+verifier's workspace. Where the filesystem cannot clone — another volume, another
+filesystem, a reflink-less kernel — the bytes are copied instead, and `OMP_DOG_NO_COW=1`
+forces that path. (Measured on APFS, 500 MiB: `cp -c` 1 ms and no extra space, a plain
+`cp` 120 ms and 500 MiB. Node's own `fs.copyFile` also clones on macOS, so the fallback
+still shares blocks there and only Linux pays a real copy.) Before materializing, the
+stored bytes are re-hashed against the manifest, so a corrupted store is refused rather
+than judged. Directory targets are packed into one `.tar` whose members keep their relative
+paths, and unpacked into the verifier's working directory.
 
 **Provenance.** Every agentic verdict records the verifier session's transcript path, so
 "who judged this, and on what evidence" is answerable after the fact. The verdict itself is
@@ -173,7 +185,10 @@ dev/smoke.sh        the end-to-end gate
 
 ## Caveats
 
-- The engine shells out to `tar` for directory captures and to unpack them for a verifier.
+- The engine shells out to `cp` (clone or copy) and to `tar` for directory captures and their
+  unpacking.
+- Cloning is an optimization with a real fallback, not a requirement: every path behaves identically
+  when `cp` cannot clone. Set `OMP_DOG_NO_COW=1` on filesystems where cloning is unreliable.
 - The script library is **CommonJS** while the repository is ESM, so `scripts/` carries its
   own `package.json` pinning `"type": "commonjs"`.
 - Two concurrent `run`s of the same graph race on supersede bookkeeping; run one graph at a

@@ -2,8 +2,8 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
-import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream, readdirSync } from "node:fs";
+import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { canonicalJson, sha256Json } from "./json.ts";
 import { withFileLock } from "./lockfile.ts";
@@ -203,15 +203,23 @@ export class DogRepository {
 		await atomicWriteJson(join(this.rootPath, "captures", `${key}.json`), input);
 	}
 
-	/** Read and re-hash one captured input. */
-	async readCapture(input: CapturedInput): Promise<Uint8Array> {
+	/** Store one captured file by cloning it: a large object is never buffered or rewritten. */
+	async putCaptureFromFile(input: CapturedInput, sourcePath: string): Promise<void> {
+		await this.initialize();
+		const key = capturedKey(input.digest);
+		await cloneOrCopyFile(sourcePath, join(this.rootPath, "captures", `${key}.bin`));
+		await atomicWriteJson(join(this.rootPath, "captures", `${key}.json`), input);
+	}
+
+	/** Re-hash one captured input against its manifest, streaming the stored bytes. */
+	async verifyCapture(input: CapturedInput): Promise<void> {
 		if (!input.exists) throw new Error(`captured input ${input.digest} represents a missing file`);
-		const bytes = await readFile(join(this.rootPath, "captures", `${capturedKey(input.digest)}.bin`));
-		const digest = createHash("sha256").update(bytes).digest("hex");
-		if (digest !== input.sha256 || bytes.byteLength !== input.byteLength) {
-			throw new Error(`captured input integrity mismatch for ${input.digest}`);
-		}
-		return bytes;
+		const path = join(this.rootPath, "captures", `${capturedKey(input.digest)}.bin`);
+		const mismatch = `captured input integrity mismatch for ${input.digest}`;
+		const sha256 = await hashFile(path);
+		if (sha256 !== input.sha256) throw new Error(mismatch);
+		const metadata = await stat(path);
+		if (metadata.size !== input.byteLength) throw new Error(mismatch);
 	}
 
 	/** Directory holding one goal's frozen object and its verifier session. */
@@ -233,15 +241,20 @@ export class DogRepository {
 		if (input === undefined || !input.exists) {
 			return { directory, workspace, objectPath: inputPath, inputPath, sessionDirectory };
 		}
-		const bytes = await this.readCapture(input);
+		// Re-hash the stored object, then place it by clone: the verifier gets a
+		// snapshot of exactly those bytes without a second full write of them.
+		await this.verifyCapture(input);
+		const blob = join(this.rootPath, "captures", `${capturedKey(input.digest)}.bin`);
 		if (input.packed !== true) {
-			await writeFile(inputPath, bytes);
+			await cloneOrCopyFile(blob, inputPath);
 			return { directory, workspace, objectPath: inputPath, inputPath, sessionDirectory };
 		}
 		const archive = `${inputPath}.tar`;
-		await writeFile(archive, bytes);
-		await mkdir(inputPath, { recursive: true });
-		execFileSync("tar", ["-xf", archive, "-C", inputPath], { stdio: "pipe" });
+		await cloneOrCopyFile(blob, archive);
+		// The archive's members are `<target>/…`, so it must be unpacked into the
+		// workspace itself — unpacking into `inputPath` would nest the tree twice.
+		await mkdir(workspace, { recursive: true });
+		execFileSync("tar", ["-xf", archive, "-C", workspace], { stdio: "pipe" });
 		return { directory, workspace, objectPath: inputPath, inputPath: archive, sessionDirectory };
 	}
 
@@ -249,6 +262,38 @@ export class DogRepository {
 	async dropVerification(runId: string, goalId: string): Promise<void> {
 		await rm(this.verificationDirectory(runId, goalId), { recursive: true, force: true });
 	}
+}
+
+/** The clone flag this platform's `cp` understands; on filesystems without CoW the call fails. */
+const CLONE_FLAG = process.platform === "darwin" ? "-c" : "--reflink=always";
+
+/**
+ * Place `source` at `destination`, sharing data blocks with the source when the
+ * filesystem can (APFS clone, reflink) and falling back to a plain copy when it
+ * cannot — another volume, another filesystem, a reflink-less kernel.
+ *
+ * `OMP_DOG_NO_COW=1` forces the plain copy: for filesystems where cloning is
+ * unreliable, and for exercising the fallback.
+ */
+export async function cloneOrCopyFile(source: string, destination: string): Promise<"clone" | "copy"> {
+	await mkdir(dirname(destination), { recursive: true });
+	if (process.env.OMP_DOG_NO_COW !== "1") {
+		try {
+			execFileSync("cp", [CLONE_FLAG, source, destination], { stdio: "pipe" });
+			return "clone";
+		} catch {
+			// no clone support here; the plain copy below is the contract
+		}
+	}
+	await copyFile(source, destination);
+	return "copy";
+}
+
+/** SHA-256 of one file, streamed so a large object is never held in memory. */
+async function hashFile(path: string): Promise<string> {
+	const hash = createHash("sha256");
+	for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+	return hash.digest("hex");
 }
 
 /** Resolve one workspace-relative path to an absolute path, never accepting escapes. */
@@ -282,17 +327,26 @@ export async function captureWorkspaceTarget(
 		try {
 			const absolutePath = await resolveWorkspacePath(root, target);
 			const metadata = await stat(absolutePath);
-			let bytes: Uint8Array;
-			let packed = false;
-			if (metadata.isDirectory()) {
-				assertTreeSafe(resolve(root), absolutePath);
-				bytes = execFileSync("tar", ["-C", resolve(root), "-cf", "-", target], { maxBuffer: maxBytes * 4 });
-				packed = true;
-			} else if (metadata.isFile()) {
-				bytes = await readFile(absolutePath);
-			} else {
-				throw new Error(`target ${target} is not a regular file or directory`);
+			if (metadata.isFile()) {
+				if (metadata.size > maxBytes) throw new Error(`target ${target} exceeds ${maxBytes} bytes`);
+				const sha256 = await hashFile(absolutePath);
+				const settled = await stat(absolutePath);
+				if (settled.size !== metadata.size || settled.mtimeMs !== metadata.mtimeMs) {
+					throw new Error(`target ${target} changed while it was being captured`);
+				}
+				const input: CapturedInput = {
+					path: target,
+					digest: `sha256:${sha256}`,
+					exists: true,
+					byteLength: metadata.size,
+					sha256,
+				};
+				await repository.putCaptureFromFile(input, absolutePath);
+				return { input };
 			}
+			if (!metadata.isDirectory()) throw new Error(`target ${target} is not a regular file or directory`);
+			assertTreeSafe(resolve(root), absolutePath);
+			const bytes = execFileSync("tar", ["-C", resolve(root), "-cf", "-", target], { maxBuffer: maxBytes * 4 });
 			if (bytes.byteLength > maxBytes) throw new Error(`target ${target} exceeds ${maxBytes} bytes`);
 			const sha256 = createHash("sha256").update(bytes).digest("hex");
 			const input: CapturedInput = {
@@ -301,7 +355,7 @@ export async function captureWorkspaceTarget(
 				exists: true,
 				byteLength: bytes.byteLength,
 				sha256,
-				...(packed ? { packed: true } : {}),
+				packed: true,
 			};
 			await repository.putCapture(input, bytes);
 			return { input };

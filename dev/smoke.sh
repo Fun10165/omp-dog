@@ -16,7 +16,7 @@ printf 'smoke artifact\n' > "$work/artifact.txt"
 printf 'this file deliberately does not contain the required line\n' > "$work/wrong.txt"
 
 cat > "$work/graphs.mjs" <<'JS'
-// Emit the three smoke graphs, so the shell stays readable.
+// Emit the smoke graphs, so the shell stays readable.
 import { writeFileSync } from "node:fs";
 const dir = process.argv[2];
 const leaf = (id, title, target, instruction) => [id, {
@@ -44,8 +44,13 @@ writeFileSync(`${dir}/agentic-graph.json`, JSON.stringify(
   graph("smoke-agentic", "artifact.txt", "The captured file must contain the exact line: smoke artifact"), null, 2));
 writeFileSync(`${dir}/negative-graph.json`, JSON.stringify(
   graph("smoke-negative", "wrong.txt", "The captured file must contain the exact line: smoke artifact"), null, 2));
+writeFileSync(`${dir}/dir-graph.json`, JSON.stringify(
+  graph("smoke-directory", "bundle",
+    "The captured directory must contain a file named inside.txt whose only line is: smoke artifact"), null, 2));
 JS
 node "$work/graphs.mjs" "$work"
+mkdir -p "$work/bundle"
+printf 'smoke artifact\n' > "$work/bundle/inside.txt"
 
 dog() { bun cli.ts "$@" --project "$work" --model "$model"; }
 
@@ -86,6 +91,13 @@ echo "case 4 — falsification (a bad sample must fail the root)"
 dog create "$work/negative-graph.json" > "$work/negative-create.json"
 dog run "$(graph_id "$work/negative-create.json")" > "$work/negative-run.json" || true
 check "bad sample is blocked" "failure" "$(root_state "$work/negative-run.json")"
+
+echo "case 5 — directory target (packed, cloned, unpacked for the verifier)"
+dog create "$work/dir-graph.json" > "$work/dir-create.json"
+check "directory capture is packed" "true" \
+	"$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).acceptancePlans.find(p=>p.goalId==="leaf").digest.startsWith("sha256:")))' "$work/dir-create.json")"
+dog run "$(graph_id "$work/dir-create.json")" > "$work/dir-run.json"
+check "verifier reads the unpacked tree" "success" "$(root_state "$work/dir-run.json")"
 
 echo
 if [ "$failed" -eq 0 ]; then
