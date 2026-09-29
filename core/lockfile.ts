@@ -3,7 +3,12 @@
 import { open, rm, stat } from "node:fs/promises";
 
 export class FileLock {
-	constructor(private readonly path: string) {}
+	private readonly path: string;
+
+	/** A parameter property here would break runtimes that only strip types (Node). */
+	constructor(path: string) {
+		this.path = path;
+	}
 
 	/**
 	 * Try to acquire the lock. create-exclusive ('wx') is atomic across

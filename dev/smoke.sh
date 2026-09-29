@@ -70,6 +70,13 @@ check() { # $1=label $2=expected $3=actual
 
 echo "work dir: $work"
 
+echo "case 0 — the CLI loads under Node's type stripping as well as Bun"
+if node --experimental-strip-types cli.ts --help >/dev/null 2>&1; then
+	check "node can load cli.ts" "ok" "ok"
+else
+	check "node can load cli.ts" "ok" "failed (strip-only unsupported syntax in a source file)"
+fi
+
 echo "case 1 — script kernel (no model turn)"
 dog create "$work/script-graph.json" > "$work/script-create.json"
 dog run "$(graph_id "$work/script-create.json")" > "$work/script-run.json"

@@ -1,8 +1,8 @@
 /** Frozen captures, immutable graph revisions, run records, and per-verification objects. */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { createReadStream, readdirSync } from "node:fs";
+import { constants, createReadStream, readdirSync } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { canonicalJson, sha256Json } from "./json.ts";
@@ -264,28 +264,46 @@ export class DogRepository {
 	}
 }
 
-/** The clone flag this platform's `cp` understands; on filesystems without CoW the call fails. */
+/** The platform clone flag: APFS `clonefile` through `cp -c`, Linux reflink through `cp --reflink=always`. */
 const CLONE_FLAG = process.platform === "darwin" ? "-c" : "--reflink=always";
 
 /**
  * Place `source` at `destination`, sharing data blocks with the source when the
- * filesystem can (APFS clone, reflink) and falling back to a plain copy when it
- * cannot — another volume, another filesystem, a reflink-less kernel.
+ * filesystem and runtime can, and copying when they cannot — another volume,
+ * another filesystem, a reflink-less kernel, or a runtime whose libuv has no
+ * clone support.
  *
- * `OMP_DOG_NO_COW=1` forces the plain copy: for filesystems where cloning is
- * unreliable, and for exercising the fallback.
+ * Two clone mechanisms, because neither one covers every runtime (measured on
+ * macOS APFS, 300 MiB): Bun clones through every path, while Node 26 answers
+ * `ENOSYS` to `COPYFILE_FICLONE_FORCE` and silently byte-copies for
+ * `COPYFILE_FICLONE` — only `cp -c` still clones there. So: in-process first,
+ * the platform tool second, an honest copy last.
+ *
+ * The copy goes through a temporary name because `clonefile` refuses an existing
+ * destination, and the rename keeps the replacement atomic. `OMP_DOG_NO_COW=1`
+ * skips both clone attempts.
  */
 export async function cloneOrCopyFile(source: string, destination: string): Promise<"clone" | "copy"> {
 	await mkdir(dirname(destination), { recursive: true });
+	const temporary = `${destination}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
 	if (process.env.OMP_DOG_NO_COW !== "1") {
 		try {
-			execFileSync("cp", [CLONE_FLAG, source, destination], { stdio: "pipe" });
+			await copyFile(source, temporary, constants.COPYFILE_FICLONE_FORCE);
+			await rename(temporary, destination);
 			return "clone";
 		} catch {
-			// no clone support here; the plain copy below is the contract
+			await rm(temporary, { force: true }); // a refused clone leaves nothing behind
+		}
+		try {
+			execFileSync("cp", [CLONE_FLAG, source, temporary], { stdio: "pipe" });
+			await rename(temporary, destination);
+			return "clone";
+		} catch {
+			await rm(temporary, { force: true });
 		}
 	}
-	await copyFile(source, destination);
+	await copyFile(source, temporary);
+	await rename(temporary, destination);
 	return "copy";
 }
 

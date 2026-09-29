@@ -95,19 +95,26 @@ describe("capture", () => {
 		await expect(resolveWorkspacePath(root, "../outside.txt")).rejects.toThrow(/escapes/);
 	});
 
-	it("clones when the filesystem can and copies when told not to", async () => {
+	it("clones when the filesystem can, copies when told not to, and replaces in place", async () => {
 		const root = await scratch();
 		const source = join(root, "source.bin");
+		const destination = join(root, "copied.bin");
 		await writeFile(source, "payload\n");
 
-		const cloned = await cloneOrCopyFile(source, join(root, "cloned.bin"));
-		expect(await readFile(join(root, "cloned.bin"), "utf8")).toBe("payload\n");
+		const cloned = await cloneOrCopyFile(source, destination);
+		expect(await readFile(destination, "utf8")).toBe("payload\n");
 		if (process.platform === "darwin") expect(cloned).toBe("clone");
 
+		// The same capture runs again on every create: overwriting an existing
+		// destination must work, and clonefile's EEXIST must not leak out.
+		const again = await cloneOrCopyFile(source, destination);
+		expect(await readFile(destination, "utf8")).toBe("payload\n");
+		if (process.platform === "darwin") expect(again).toBe("clone");
+
 		process.env.OMP_DOG_NO_COW = "1";
-		const copied = await cloneOrCopyFile(source, join(root, "copied.bin"));
+		const copied = await cloneOrCopyFile(source, destination);
 		expect(copied).toBe("copy");
-		expect(await readFile(join(root, "copied.bin"), "utf8")).toBe("payload\n");
+		expect(await readFile(destination, "utf8")).toBe("payload\n");
 	});
 
 	it("packs a directory target and hands the verifier the unpacked tree", async () => {
