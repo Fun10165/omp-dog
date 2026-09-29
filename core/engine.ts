@@ -14,6 +14,7 @@ import type {
 	DogConfig,
 	DogGraphInput,
 	DogRun,
+	FrozenBackground,
 	GoalId,
 	GoalResult,
 	GoalState,
@@ -110,7 +111,7 @@ export class DogEngine {
 			acceptancePlans[goalId] = {
 				goalId,
 				verifier: node.verifier,
-				judgment: this.judgmentOf(node.verifier, background?.sha256),
+				judgment: this.judgmentOf(node.verifier, background),
 				target,
 				objectPath: input.path,
 				input,
@@ -348,7 +349,14 @@ export class DogEngine {
 				: {
 						provenance: `git ${captured.git.ref} @ ${captured.git.commit.slice(0, 12)}${captured.git.path.length === 0 ? "" : ` (path: ${captured.git.path})`}`,
 					}),
-			...(compiled.background === undefined ? {} : { background: compiled.background.text }),
+			...(compiled.background === undefined
+				? {}
+				: {
+						background: {
+							...(compiled.background.general === undefined ? {} : { general: compiled.background.general.text }),
+							...(compiled.background.specific === undefined ? {} : { specific: compiled.background.specific.text }),
+						},
+					}),
 			...(captured === undefined || !captured.exists
 				? {}
 				: { byteLength: captured.byteLength, sha256: captured.sha256 }),
@@ -384,15 +392,21 @@ export class DogEngine {
 	 * graph without a background hashes exactly as it did before the field existed,
 	 * which keeps existing anchors valid.
 	 */
-	private judgmentOf(verifier: VerifierShape, backgroundDigest: string | undefined): AcceptancePlan["judgment"] {
+	private judgmentOf(verifier: VerifierShape, background: FrozenBackground | undefined): AcceptancePlan["judgment"] {
 		if (verifier.mode === "programmatic") {
 			const scriptPath = resolveScriptPath(this.config.scriptsDirectory, verifier.script);
 			return { mode: "programmatic", script: verifier.script, scriptDigest: readScriptDigest(scriptPath) };
 		}
 		const payload =
-			backgroundDigest === undefined
+			background === undefined
 				? { instruction: verifier.instruction }
-				: { instruction: verifier.instruction, background: backgroundDigest };
+				: {
+						instruction: verifier.instruction,
+						background: {
+							general: background.general?.sha256 ?? null,
+							specific: background.specific?.sha256 ?? null,
+						},
+					};
 		return { mode: "agentic", instructionHash: `sha256:${sha256Json(payload)}` };
 	}
 

@@ -384,10 +384,12 @@ describe("engine", () => {
 		expect(peak).toBe(2);
 	});
 
-	it("freezes the graph background and folds it into the judgment identity", async () => {
+	it("freezes both background tiers and folds them into the judgment identity", async () => {
 		const root = await fixtureRoot();
-		const backgroundPath = join(root, "background.md");
-		await writeFile(backgroundPath, "# what this is\n\nDoG turns a non-formal goal into verified subgoals.\n");
+		const generalPath = join(root, "general.md");
+		const specificPath = join(root, "specific.md");
+		await writeFile(generalPath, "# DoG\n\nDoG turns a non-formal goal into verified subgoals.\n");
+		await writeFile(specificPath, "# This submission\n\nWe are judging the graph that gates report.md.\n");
 		const { runner, calls } = recordingAgentic(() => ({ state: "pass", evidence: {} }));
 		const fixture = await makeFixture(root, { agentic: runner });
 		const withBackground = (id: string): Record<string, unknown> => ({
@@ -399,39 +401,42 @@ describe("engine", () => {
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 				id,
 			),
-			background: "background.md",
+			background: { general: "general.md", specific: "specific.md" },
 		});
 
 		const compiled = await fixture.engine.create(withBackground("with-background"), { captureBaseDir: root });
-		expect(compiled.background?.text).toContain("DoG turns a non-formal goal");
-		expect(compiled.background?.sha256).toMatch(/^[a-f0-9]{64}$/);
+		expect(compiled.background?.general?.text).toContain("DoG turns a non-formal goal");
+		expect(compiled.background?.specific?.text).toContain("We are judging the graph");
+		expect(compiled.background?.general?.sha256).toMatch(/^[a-f0-9]{64}$/);
 
 		const first = await fixture.engine.run(compiled.input.id);
 		expect(first.goals.leaf?.state).toBe("success");
-		expect(calls[0]?.target.background).toContain("DoG turns a non-formal goal");
+		expect(calls[0]?.target.background?.general).toContain("DoG turns a non-formal goal");
+		expect(calls[0]?.target.background?.specific).toContain("We are judging the graph");
 
 		// Same instruction, same background: nothing to judge again.
 		const second = await fixture.engine.run(compiled.input.id);
 		expect(second.goals.leaf?.state).toBe("inherited");
 		expect(calls).toHaveLength(1);
 
-		// The background is part of the standard: editing it re-judges the goal.
-		await writeFile(
-			backgroundPath,
-			"# what this is\n\nDoG turns a non-formal goal into verified subgoals, and this changed.\n",
-		);
+		// Either tier is part of the standard: editing the per-submission half re-judges too.
+		await writeFile(specificPath, "# This submission\n\nWe are now judging something else.\n");
 		const recompiled = await fixture.engine.create(withBackground("with-background"), { captureBaseDir: root });
 		const third = await fixture.engine.run(recompiled.input.id);
 		expect(third.goals.leaf?.state).toBe("success");
 		expect(calls).toHaveLength(2);
 
-		// A declared background that is not there is a configuration error, not a silent drop.
+		// A named background that is not there is a configuration error, not a silent drop.
 		await expect(
 			fixture.engine.create(
-				{ ...withBackground("with-background"), background: "absent.md" },
+				{ ...withBackground("with-background"), background: { general: "absent.md" } },
 				{ captureBaseDir: root },
 			),
 		).rejects.toThrow(/background file not found/);
+		// Naming neither tier is a malformed background, not "no background".
+		await expect(
+			fixture.engine.create({ ...withBackground("with-background"), background: {} }, { captureBaseDir: root }),
+		).rejects.toThrow(/must name general, specific, or both/);
 	});
 
 	it("cancels every unsettled goal and the run when the signal aborts", async () => {

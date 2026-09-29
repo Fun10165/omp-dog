@@ -91,18 +91,30 @@ export interface DependencyEdge {
 	readonly data?: readonly string[];
 }
 
+/**
+ * Two tiers of background, both handed to every agentic verifier.
+ *
+ * `general` is the stable half: what this system is, how to read what is being
+ * judged. It changes when the *product* changes. `specific` is the other half:
+ * only what this particular trigger needs — the user's original words, what this
+ * submission is meant to solve. It changes per submission.
+ */
+export interface BackgroundSpec {
+	readonly general?: string;
+	readonly specific?: string;
+}
+
 export interface DogGraphInput {
 	readonly schemaVersion: typeof DOG_SCHEMA_VERSION;
 	readonly id: string;
 	readonly root: GoalId;
 	/**
-	 * Workspace-relative markdown file handed to every agentic verifier, before
-	 * the instruction. Use it for what the graph itself cannot say: what the system
-	 * is for, what the artifact under review is meant to solve, and the original
-	 * words the work started from. Its content is part of the judgment identity, so
-	 * editing it re-judges the graph.
+	 * Workspace-relative markdown files handed to every agentic verifier, before
+	 * the instruction: `general` first (what DoG is, how to read a graph),
+	 * `specific` second (this submission's own context). Their contents are part
+	 * of the judgment identity, so editing either re-judges the graph.
 	 */
-	readonly background?: string;
+	readonly background?: BackgroundSpec;
 	readonly nodes: Record<GoalId, GoalNodeInput>;
 	readonly contains: readonly ContainsEdge[];
 	readonly dependsOn: readonly DependencyEdge[];
@@ -210,10 +222,16 @@ export interface CompiledGraph {
 }
 
 /** One frozen background document: where it came from, and the bytes it had. */
-export interface FrozenBackground {
+export interface FrozenDocument {
 	readonly path: string;
 	readonly sha256: string;
 	readonly text: string;
+}
+
+/** Both tiers as read and frozen at compile time. */
+export interface FrozenBackground {
+	readonly general?: FrozenDocument;
+	readonly specific?: FrozenDocument;
 }
 
 export interface DogRun {

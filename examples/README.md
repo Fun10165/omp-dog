@@ -24,14 +24,19 @@
 
 ## 3. `do-dog-genesis.graph.json` — 元图（把关「一张生成的 DoG 图」）
 
-19 个节点（13 叶 + 6 组合），全部判据都是 agentic，对象是 **`generated-dog.graph.json`**；
-图级 `background: "background.md"` 给所有验证者提供背景（DoG 是什么、这份交付物要解决什么、用户原话）。
+19 个节点（13 叶 + 6 组合），全部判据都是 agentic，对象是 **`generated-dog.graph.json`**。
+图级背景分两层，两层都会进**每个**验证者的简报：
 
-跑它之前，工作区里要有两样东西：
+| 层                     | 模板文件                                                   | 内容                                         |
+| ---------------------- | ---------------------------------------------------------- | -------------------------------------------- |
+| `general`（稳定）      | [`do-dog-genesis.general.md`](do-dog-genesis.general.md)   | DoG 是什么、图的字段、判定纪律；原样拷贝即可 |
+| `specific`（每次触发） | [`do-dog-genesis.specific.md`](do-dog-genesis.specific.md) | 这次在判什么、用户的**原话**；两节待填       |
+
+跑它之前，工作区里要有三样东西：
 
 - `generated-dog.graph.json` — 待评的那张图；
-- `background.md` — 从 [`do-dog-genesis.background.md`](do-dog-genesis.background.md) 拷贝并填写
-  （它是模板：DoG 的用途已经写好，另两节留给这次提交）。
+- `general.md` — 从 `do-dog-genesis.general.md` 拷贝；
+- `specific.md` — 从 `do-dog-genesis.specific.md` 拷贝并填写两节（没有它，「覆盖率」与「无过度设计」两条判据无法判定）。
 
 ```bash
 omp-dog create <repo>/examples/do-dog-genesis.graph.json --project .

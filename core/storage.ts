@@ -10,10 +10,12 @@ import { withFileLock } from "./lockfile.ts";
 import {
 	DOG_SCHEMA_VERSION,
 	type AcceptancePlan,
+	type BackgroundSpec,
 	type CapturedInput,
 	type CompiledGraph,
 	type DogRun,
 	type FrozenBackground,
+	type FrozenDocument,
 	type TargetSpec,
 } from "./model.ts";
 
@@ -476,15 +478,28 @@ export async function resolveWorkspacePath(workspaceRoot: string, relPath: strin
 }
 
 /**
- * Read the graph's background document from the workspace. Unlike a target it is
- * not optional: a graph that declares one and cannot find it is a configuration
- * error, because silently dropping it would weaken every judgment in the graph.
+ * Read one of the graph's background documents from the workspace. Unlike a
+ * target it is not optional: a graph that names one and cannot find it is a
+ * configuration error, because silently dropping it would weaken every judgment
+ * in the graph.
  */
 export async function readWorkspaceBackground(
 	captureRoots: readonly string[],
-	path: string,
+	spec: BackgroundSpec,
 	maxBytes: number,
 ): Promise<FrozenBackground> {
+	const general =
+		spec.general === undefined ? undefined : await readWorkspaceDocument(captureRoots, spec.general, maxBytes);
+	const specific =
+		spec.specific === undefined ? undefined : await readWorkspaceDocument(captureRoots, spec.specific, maxBytes);
+	return { ...(general === undefined ? {} : { general }), ...(specific === undefined ? {} : { specific }) };
+}
+
+async function readWorkspaceDocument(
+	captureRoots: readonly string[],
+	path: string,
+	maxBytes: number,
+): Promise<FrozenDocument> {
 	for (const root of captureRoots) {
 		try {
 			const absolute = await resolveWorkspacePath(root, path);

@@ -157,12 +157,14 @@ the session's own; the engine binds it to the bytes and the instruction it was i
   `"path": "src/lib"` for one subtree of it. A ref that does not resolve settles `missing` (so a
   graph can gate on a commit that does not exist yet); a workspace that is not a repository at all
   is a configuration error and throws.
-- `background` (optional) names a workspace-relative markdown file handed to every agentic verifier
-  *before* its instruction: what the system is for, what the artifact under review is meant to solve,
-  and the user's original words. Judgments like "is any essential aspect missing" or "is this branch
-  unrelated to the goal" are unanswerable without it. It is read and frozen at `create`, and its
-  digest is part of every agentic judgment identity, so editing it re-judges the graph. A declared
-  background that cannot be read is an error, never a silent omission.
+- `background` (optional) names workspace-relative markdown files handed to **every** agentic
+  verifier before its instruction, in two tiers: `general` — what this system is and how to read
+  what is being judged (stable; it changes when the product changes) — and `specific` — only what
+  this trigger needs, such as the user's original words and what this submission is meant to solve.
+  Judgments like "is any essential aspect missing" or "is this branch unrelated to the goal" are
+  unanswerable without the specific tier. Both files are read and frozen at `create`, both digests
+  fold into every agentic judgment identity (editing either re-judges the graph), and naming a file
+  that cannot be read is an error rather than a silent omission.
 - The root is `composite` with `constraint: "hard"`.
 
 The full language and operational rules ship as a skill:

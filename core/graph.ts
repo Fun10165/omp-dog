@@ -2,6 +2,7 @@
 
 import { parseBoolExpr } from "./logic.ts";
 import type {
+	BackgroundSpec,
 	ContainsEdge,
 	DependencyEdge,
 	DogGraphInput,
@@ -34,8 +35,7 @@ export function parseGraph(value: unknown, limits: GraphLimits): DogGraphInput {
 	if (root.schemaVersion !== DOG_SCHEMA_VERSION) errors.push(`$.schemaVersion: expected ${DOG_SCHEMA_VERSION}`);
 	const graphId = parseId(root.id, "$.id", errors);
 	const rootId = parseId(root.root, "$.root", errors);
-	const background =
-		root.background === undefined ? undefined : parseNonEmptyString(root.background, "$.background", errors);
+	const background = parseBackground(root.background, "$.background", errors);
 	const nodes = parseNodes(root.nodes, limits, errors);
 	const contains = parseContains(root.contains, errors);
 	const dependsOn = parseDependencies(root.dependsOn, errors);
@@ -145,6 +145,23 @@ function parseDependencies(value: unknown, errors: string[]): DependencyEdge[] |
 			edges.push({ source, target, ...(data === undefined ? {} : { data }) });
 	}
 	return edges;
+}
+
+/** `background` names the stable half (general) and the per-trigger half (specific). */
+function parseBackground(value: unknown, path: string, errors: string[]): BackgroundSpec | undefined {
+	if (value === undefined) return undefined;
+	const record = asRecord(value, path, errors);
+	if (record === undefined) return undefined;
+	checkExactKeys(record, ["general", "specific"], path, errors);
+	const general =
+		record.general === undefined ? undefined : parseNonEmptyString(record.general, `${path}.general`, errors);
+	const specific =
+		record.specific === undefined ? undefined : parseNonEmptyString(record.specific, `${path}.specific`, errors);
+	if (general === undefined && specific === undefined) {
+		errors.push(`${path}: must name general, specific, or both`);
+		return undefined;
+	}
+	return { ...(general === undefined ? {} : { general }), ...(specific === undefined ? {} : { specific }) };
 }
 
 /** A bare string is the `path` form; an object names a path or a git tree. */

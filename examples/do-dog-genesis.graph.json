@@ -2,7 +2,7 @@
 	"schemaVersion": "0.9",
 	"id": "do-dog-genesis",
 	"root": "root",
-	"background": "background.md",
+	"background": { "general": "general.md", "specific": "specific.md" },
 	"nodes": {
 		"root": {
 			"kind": "composite",

@@ -87,7 +87,10 @@ describe("agentic kernel", () => {
 				title: "smoke leaf",
 				target: "artifact.txt",
 				isDirectory: false,
-				background: "# Background\n\nDoG turns a non-formal goal into verified subgoals.",
+				background: {
+					general: "# DoG\n\nDoG turns a non-formal goal into verified subgoals.",
+					specific: "# This submission\n\nWe are judging the graph that gates report.md.",
+				},
 			},
 			{ runId: "run-2", goalId: "leaf" },
 		);
@@ -98,9 +101,13 @@ describe("agentic kernel", () => {
 		expect(written.argv[written.argv.indexOf("--session-dir") + 1]).toBe(join(sessionRoot, "run-2", "leaf"));
 		const systemPrompt = written.argv[written.argv.indexOf("--append-system-prompt") + 1];
 		expect(systemPrompt).toContain("DoG verifier");
-		// The background precedes the instruction, and the instruction survives verbatim.
+		// The background precedes the instruction, in tier order, and the instruction survives verbatim.
 		expect(written.prompt).toContain("DoG turns a non-formal goal into verified subgoals.");
-		expect(written.prompt.indexOf("Background")).toBeLessThan(written.prompt.indexOf("Instruction (the only standard"));
+		expect(written.prompt).toContain("We are judging the graph that gates report.md.");
+		expect(written.prompt.indexOf("what DoG is")).toBeLessThan(written.prompt.indexOf("what this submission is"));
+		expect(written.prompt.indexOf("what this submission is")).toBeLessThan(
+			written.prompt.indexOf("Instruction (the only standard"),
+		);
 	});
 
 	it("settles inconclusive when a finished session never submits a verdict", async () => {
