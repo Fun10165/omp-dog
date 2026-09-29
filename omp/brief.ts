@@ -25,6 +25,8 @@ export interface BriefOptions {
 	readonly objectSha256?: string;
 	/** True when the object is a directory unpacked from a captured archive. */
 	readonly objectIsDirectory: boolean;
+	/** Where the object was frozen from, when that is worth naming (a git ref). */
+	readonly provenance?: string;
 }
 
 /** The exact assignment one verifier session receives. */
@@ -39,6 +41,7 @@ export function buildVerifierBrief(options: BriefOptions): string {
 		options.objectIsDirectory
 			? "That directory is the frozen capture; its contents are complete and final."
 			: "That file is the frozen capture; it is complete and final.",
+		...(options.provenance === undefined ? [] : [`Frozen from: ${options.provenance}.`]),
 		"",
 		"Instruction (the only standard you judge by):",
 		options.instruction,

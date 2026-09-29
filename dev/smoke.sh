@@ -47,6 +47,21 @@ writeFileSync(`${dir}/negative-graph.json`, JSON.stringify(
 writeFileSync(`${dir}/dir-graph.json`, JSON.stringify(
   graph("smoke-directory", "bundle",
     "The captured directory must contain a file named inside.txt whose only line is: smoke artifact"), null, 2));
+writeFileSync(`${dir}/git-graph.json`, JSON.stringify({
+  schemaVersion: "0.9", id: "smoke-git", root: "root",
+  nodes: {
+    root: {
+      kind: "composite", title: "root", constraint: "hard", target: { kind: "git", ref: "HEAD" },
+      completion: { op: "all", items: [{ op: "ref", id: "leaf" }] },
+    },
+    leaf: {
+      kind: "leaf", title: "smoke git leaf", constraint: "hard", target: { kind: "git", ref: "HEAD" },
+      verifier: { mode: "programmatic", script: "file-non-empty" },
+    },
+  },
+  contains: [{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
+  dependsOn: [],
+}, null, 2));
 JS
 node "$work/graphs.mjs" "$work"
 mkdir -p "$work/bundle"
@@ -107,6 +122,20 @@ dog run "$(graph_id "$work/dir-create.json")" > "$work/dir-run.json"
 check "verifier reads the frozen tree" "success" "$(root_state "$work/dir-run.json")"
 dog run "$(graph_id "$work/dir-create.json")" > "$work/dir-rerun.json"
 check "tree leaf inherited on re-run" "leaf" "$(inherited "$work/dir-rerun.json")"
+
+echo "case 6 — git target (a commit, not the working tree)"
+(
+	cd "$work" && git init -q &&
+		git -c user.email=dog@example.com -c user.name=DoG add -A &&
+		git -c user.email=dog@example.com -c user.name=DoG commit -q -m initial
+)
+dog create "$work/git-graph.json" > "$work/git-create.json"
+check "git capture is keyed by the commit" "git:" \
+	"$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).acceptancePlans.find(p=>p.goalId==="leaf").digest.slice(0,4))' "$work/git-create.json")"
+dog run "$(graph_id "$work/git-create.json")" > "$work/git-run.json"
+check "git tree judged" "success" "$(root_state "$work/git-run.json")"
+dog run "$(graph_id "$work/git-create.json")" > "$work/git-rerun.json"
+check "git leaf inherited on re-run" "leaf" "$(inherited "$work/git-rerun.json")"
 
 echo
 if [ "$failed" -eq 0 ]; then

@@ -72,6 +72,7 @@ export function createRpcAgenticRunner(options: VerifierKernelOptions): AgenticR
 			title: target.title,
 			instruction,
 			objectPath: target.target,
+			...(target.provenance === undefined ? {} : { provenance: target.provenance }),
 			...(target.byteLength === undefined ? {} : { objectBytes: target.byteLength }),
 			...(target.sha256 === undefined || target.sha256.length === 0 ? {} : { objectSha256: target.sha256 }),
 			objectIsDirectory: target.isDirectory,

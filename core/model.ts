@@ -54,12 +54,23 @@ export type VerifierShape =
 	| { readonly mode: "programmatic"; readonly script: string }
 	| { readonly mode: "agentic"; readonly instruction: string };
 
+/**
+ * What a goal judges: a workspace path, or a git tree at a ref.
+ *
+ * A bare string in a graph is the `path` form; the object form names a commit so
+ * the object is exactly those committed bytes — the working tree does not take
+ * part, and the identity is the commit, not a hash of the checkout.
+ */
+export type TargetSpec =
+	| { readonly kind: "path"; readonly path: string }
+	| { readonly kind: "git"; readonly ref: string; readonly path?: string };
+
 export interface GoalNodeInput {
 	readonly kind: GoalKind;
 	readonly title: string;
 	readonly constraint: ConstraintKind;
-	/** Single file path or a directory/collection (the engine packs it into a .tar). */
-	readonly target: string;
+	/** A workspace-relative file/directory, or a git ref (optionally a subpath). */
+	readonly target: TargetSpec;
 	/** Leaf: required. Composite: optional whole-object assertion (runs after the subtree settles). */
 	readonly verifier?: VerifierShape;
 	/** Composite only: boolean combination of children. */
@@ -120,10 +131,17 @@ export interface CapturedInput {
 	readonly packed?: boolean;
 	/**
 	 * How the stored bytes are shaped: a cloned file, a tree of cloned files
-	 * (digest `tree:…`), or a legacy `.tar` (digest `sha256:…`, `packed`).
-	 * Absent means a single file.
+	 * (digest `tree:…`), a git tree materialized at a commit (digest `git:…`), or
+	 * a legacy `.tar` (digest `sha256:…`, `packed`). Absent means a single file.
 	 */
-	readonly form?: "file" | "tree" | "tar";
+	readonly form?: "file" | "tree" | "git" | "tar";
+	/** Present for a git capture: what was asked for, what it resolved to. */
+	readonly git?: {
+		readonly ref: string;
+		readonly commit: string;
+		/** Subtree path inside the repository (`""` for the whole tree). */
+		readonly path: string;
+	};
 }
 
 /** Deterministic or agentic: the judgment identity half of the inheritance anchor. */
@@ -137,7 +155,10 @@ export interface AcceptancePlan {
 	readonly verifier: VerifierShape;
 	/** Identity of the judgment source; part of the inheritance anchor. */
 	readonly judgment: JudgmentIdentity;
-	readonly target: string;
+	/** As declared in the graph. */
+	readonly target: TargetSpec;
+	/** Workspace-relative name the object is materialized under. */
+	readonly objectPath: string;
 	/** Captured object metadata (absent when the target is missing/empty). */
 	readonly input?: CapturedInput;
 }

@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { constants, createReadStream } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { canonicalJson, sha256Json } from "./json.ts";
 import { withFileLock } from "./lockfile.ts";
 import {
@@ -13,6 +13,7 @@ import {
 	type CapturedInput,
 	type CompiledGraph,
 	type DogRun,
+	type TargetSpec,
 } from "./model.ts";
 
 export interface CapturedInputFile {
@@ -83,7 +84,15 @@ export class DogRepository {
 		if (sha256Json({ input: record.input, acceptancePlans: record.acceptancePlans }) !== index.graphDigest) {
 			throw new Error(`invalid persisted graph record ${index.graphDigest}`);
 		}
-		return { input: record.input, graphDigest: record.graphDigest, acceptancePlans: record.acceptancePlans };
+		// Revisions compiled before targets became a union carry a bare string; the
+		// object path is then the string itself.
+		const acceptancePlans: Record<string, AcceptancePlan> = {};
+		for (const [goalId, plan] of Object.entries(record.acceptancePlans)) {
+			const target = plan.target as unknown;
+			acceptancePlans[goalId] =
+				typeof target === "string" ? { ...plan, target: { kind: "path", path: target }, objectPath: target } : plan;
+		}
+		return { input: record.input, graphDigest: record.graphDigest, acceptancePlans };
 	}
 
 	/** Enumerate immutable graph revisions, newest ID first. */
@@ -216,12 +225,15 @@ export class DogRepository {
 		await this.initialize();
 		const key = capturedKey(input.digest);
 		const directory = join(this.rootPath, "captures", key);
-		const manifestPath = join(directory, "manifest.json");
-		const stored = await stat(manifestPath).catch(() => undefined);
-		if (stored !== undefined) return; // content-addressed: this tree is already frozen
-		await rm(directory, { recursive: true, force: true });
-		await cloneOrCopyTree(sourceDir, join(directory, "tree"));
-		await atomicWriteJson(manifestPath, manifest);
+		const stored = await stat(join(directory, "manifest.json")).catch(() => undefined);
+		if (stored === undefined) {
+			await rm(directory, { recursive: true, force: true });
+			await cloneOrCopyTree(sourceDir, join(directory, "tree"));
+			await atomicWriteJson(join(directory, "manifest.json"), manifest);
+		}
+		// The input record is rewritten even when the tree is already frozen: the
+		// bytes are identical, but the provenance (which ref resolved to it) is not.
+		await atomicWriteJson(join(this.rootPath, "captures", `${key}.json`), input);
 	}
 
 	/** Re-hash one captured input against what was recorded for it. */
@@ -229,7 +241,7 @@ export class DogRepository {
 		if (!input.exists) throw new Error(`captured input ${input.digest} represents a missing file`);
 		const key = capturedKey(input.digest);
 		const mismatch = `captured input integrity mismatch for ${input.digest}`;
-		if (captureForm(input) === "tree") {
+		if (captureForm(input) === "tree" || captureForm(input) === "git") {
 			const stored = await readTree(join(this.rootPath, "captures", key, "tree"), Number.MAX_SAFE_INTEGER);
 			if (manifestDigest(stored) !== input.sha256) throw new Error(mismatch);
 			return;
@@ -254,7 +266,7 @@ export class DogRepository {
 		const directory = this.verificationDirectory(runId, goalId);
 		const workspace = join(directory, "object");
 		const sessionDirectory = join(directory, "session");
-		const inputPath = join(workspace, plan.target);
+		const inputPath = join(workspace, plan.objectPath);
 		await mkdir(dirname(inputPath), { recursive: true });
 		const input = plan.input;
 		if (input === undefined || !input.exists) {
@@ -265,7 +277,7 @@ export class DogRepository {
 		await this.verifyCapture(input);
 		const key = capturedKey(input.digest);
 		const form = captureForm(input);
-		if (form === "tree") {
+		if (form === "tree" || form === "git") {
 			await cloneOrCopyTree(join(this.rootPath, "captures", key, "tree"), inputPath);
 			return { directory, workspace, objectPath: inputPath, inputPath, sessionDirectory };
 		}
@@ -358,13 +370,13 @@ interface TreeFile {
  */
 export interface TreeManifest {
 	readonly schemaVersion: "0.1";
-	readonly kind: "tree";
+	readonly kind: "tree" | "git";
 	readonly files: readonly TreeFile[];
 	readonly totalBytes: number;
 }
 
 /** Walk a tree in a deterministic order; symlinks and special files are refused. */
-async function readTree(rootDir: string, maxBytes: number): Promise<TreeManifest> {
+async function readTree(rootDir: string, maxBytes: number, kind: "tree" | "git" = "tree"): Promise<TreeManifest> {
 	const entries = await readdir(rootDir, { withFileTypes: true, recursive: true });
 	const found = entries
 		.filter((entry) => !entry.isDirectory())
@@ -383,7 +395,7 @@ async function readTree(rootDir: string, maxBytes: number): Promise<TreeManifest
 		if (totalBytes > maxBytes) throw new Error(`target tree exceeds ${maxBytes} bytes`);
 		files.push({ path: item.path, byteLength: metadata.size, sha256: await hashFile(item.absolute) });
 	}
-	return { schemaVersion: "0.1", kind: "tree", files, totalBytes };
+	return { schemaVersion: "0.1", kind, files, totalBytes };
 }
 
 /** The identity of a tree: its sorted file list, not its bytes on disk. */
@@ -392,7 +404,7 @@ function manifestDigest(manifest: TreeManifest): string {
 }
 
 /** How one capture is stored; records written before `form` existed are inferred. */
-function captureForm(input: CapturedInput): "file" | "tree" | "tar" {
+function captureForm(input: CapturedInput): "file" | "tree" | "git" | "tar" {
 	if (input.form !== undefined) return input.form;
 	return input.packed === true ? "tar" : "file";
 }
@@ -456,12 +468,105 @@ export async function resolveWorkspacePath(workspaceRoot: string, relPath: strin
 }
 
 /**
- * Capture one target: a single file, or a directory packed into a .tar
- * (relative structure preserved). Roots are tried in order; a non-missing error
- * (escape, wrong type, size) aborts immediately, while a target absent from
+ * Capture one target: a workspace path (file, or directory frozen as a cloned
+ * tree), or a git tree at a ref. Roots are tried in order; a non-missing error
+ * (escape, wrong type, size) aborts immediately, while a path target absent from
  * every root settles as `missing`.
  */
-export async function captureWorkspaceTarget(
+export async function captureTarget(
+	captureRoots: readonly string[],
+	target: TargetSpec,
+	maxBytes: number,
+	repository: DogRepository,
+): Promise<CapturedInputFile> {
+	return target.kind === "git"
+		? captureGitTarget(captureRoots, target, maxBytes, repository)
+		: capturePathTarget(captureRoots, target.path, maxBytes, repository);
+}
+
+/** One git invocation, read-only, in one repository. Undefined when git refuses. */
+function gitOutput(cwd: string, args: readonly string[]): string | undefined {
+	try {
+		const out = execFileSync("git", ["-C", cwd, ...args], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		const text = out.trim();
+		return text.length === 0 ? undefined : text;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Freeze a committed tree. The ref is resolved to a commit first, so the object
+ * is exactly those committed bytes — the working tree takes no part, and the
+ * identity is the commit itself rather than a hash of a checkout.
+ *
+ * A ref that does not resolve settles `missing` (gate on a commit that does not
+ * exist yet); a workspace that is not a git repository at all is a configuration
+ * error and throws.
+ */
+async function captureGitTarget(
+	captureRoots: readonly string[],
+	target: Extract<TargetSpec, { kind: "git" }>,
+	maxBytes: number,
+	repository: DogRepository,
+): Promise<CapturedInputFile> {
+	let repositoryRoot: string | undefined;
+	for (const root of captureRoots) {
+		repositoryRoot = gitOutput(root, ["rev-parse", "--show-toplevel"]);
+		if (repositoryRoot !== undefined) break;
+	}
+	if (repositoryRoot === undefined) {
+		throw new Error(`no git repository under ${captureRoots.join(", ")} for target git:${target.ref}`);
+	}
+	const subpath = target.path ?? "";
+	const objectPath = basename(subpath.length === 0 ? repositoryRoot : subpath);
+	const commit = gitOutput(repositoryRoot, ["rev-parse", "--verify", "--quiet", `${target.ref}^{commit}`]);
+	if (commit === undefined) {
+		const input: CapturedInput = {
+			path: objectPath,
+			digest: `missing:${sha256Json({ git: target.ref, path: subpath })}`,
+			exists: false,
+			byteLength: 0,
+			sha256: "",
+			packed: true,
+			form: "git",
+		};
+		await repository.putCapture(input, undefined);
+		return { input };
+	}
+	const staging = join(repository.rootPath, "captures", `.staging-${process.pid}-${randomUUID().slice(0, 8)}`);
+	const tree = join(staging, "tree");
+	await mkdir(tree, { recursive: true });
+	try {
+		const archive = join(staging, "tree.tar");
+		const spec = subpath.length === 0 ? commit : `${commit}:${subpath}`;
+		execFileSync("git", ["-C", repositoryRoot, "archive", "--format=tar", `--output=${archive}`, spec], {
+			stdio: "pipe",
+		});
+		execFileSync("tar", ["-xf", archive, "-C", tree], { stdio: "pipe" });
+		const manifest = await readTree(tree, maxBytes, "git");
+		const digest = manifestDigest(manifest);
+		const input: CapturedInput = {
+			path: objectPath,
+			digest: `git:${commit}${subpath.length === 0 ? "" : `:${subpath}`}`,
+			exists: true,
+			byteLength: manifest.totalBytes,
+			sha256: digest,
+			packed: true,
+			form: "git",
+			git: { ref: target.ref, commit, path: subpath },
+		};
+		await repository.putCaptureTree(input, tree, manifest);
+		return { input };
+	} finally {
+		await rm(staging, { recursive: true, force: true });
+	}
+}
+
+async function capturePathTarget(
 	captureRoots: readonly string[],
 	target: string,
 	maxBytes: number,

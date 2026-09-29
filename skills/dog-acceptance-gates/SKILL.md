@@ -50,7 +50,8 @@ cd <项目目录>
 **节点两种**:
 
 - `leaf`:`{kind, title, constraint: "hard"|"soft", target, verifier}` — `target` 是**工作区相对路径**
-  (文件,或目录→引擎冻结成一棵克隆树交给验证会话),`verifier` 必填。
+  (文件,或目录→引擎冻结成一棵克隆树交给验证会话);也可以写 `{"kind":"git","ref":"HEAD"}` 判某个提交的树
+  (可选 `"path":"src/lib"` 只看子树),此时**未提交的改动不参与**,身份就是那个 commit。`verifier` 必填。
 - `composite`:`{kind, title, constraint, target, completion, verifier?}` — `completion` 组合子目标;
   可选的 `verifier` 是**整体断言**(子树全结算后再判一次,**只降不升**)。
 
@@ -114,6 +115,7 @@ cd <项目目录>
 4. leaf 忘写 `verifier`,节点忘写 `target`,或 root 不是 `hard` → `create` 直接拦。
 5. `dependsOn` 方向写反 → 顺序反了,或者无谓地串行。
 6. 产物改了却不重新 `create` → 判的仍是旧字节(引擎按捕获摘要判继承)。
+7. git 目标的 `ref` 写错(标签不存在、分支名拼错)→ 结算为 `missing`,不报错;工作区**不是** git 仓库才报错。
 
 ## 报告格式(收口用)
 

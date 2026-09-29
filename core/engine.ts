@@ -19,10 +19,11 @@ import type {
 	GoalState,
 	GraphValidationReport,
 	RootTerminalState,
+	TargetSpec,
 	VerificationRecord,
 	VerifierShape,
 } from "./model.ts";
-import { DogRepository, captureWorkspaceTarget } from "./storage.ts";
+import { DogRepository, captureTarget } from "./storage.ts";
 import {
 	runPlan,
 	type AgenticRunner,
@@ -96,17 +97,18 @@ export class DogEngine {
 		for (const [goalId, node] of Object.entries(graph.nodes)) {
 			if (node.verifier === undefined) continue;
 			const target = requireTarget(node.target, goalId);
-			let input = captured.get(target);
+			const key = targetKey(target);
+			let input = captured.get(key);
 			if (input === undefined) {
-				input = (await captureWorkspaceTarget(captureRoots, target, this.config.maxSandboxBytes, this.repository))
-					.input;
-				captured.set(target, input);
+				input = (await captureTarget(captureRoots, target, this.config.maxSandboxBytes, this.repository)).input;
+				captured.set(key, input);
 			}
 			acceptancePlans[goalId] = {
 				goalId,
 				verifier: node.verifier,
 				judgment: this.judgmentOf(node.verifier),
 				target,
+				objectPath: input.path,
 				input,
 			};
 		}
@@ -330,8 +332,13 @@ export class DogEngine {
 		return {
 			goalId: plan.goalId,
 			title: input.nodes[plan.goalId]?.title ?? plan.goalId,
-			target: plan.target,
+			target: plan.objectPath,
 			isDirectory: captured?.packed === true,
+			...(captured?.git === undefined
+				? {}
+				: {
+						provenance: `git ${captured.git.ref} @ ${captured.git.commit.slice(0, 12)}${captured.git.path.length === 0 ? "" : ` (path: ${captured.git.path})`}`,
+					}),
 			...(captured === undefined || !captured.exists
 				? {}
 				: { byteLength: captured.byteLength, sha256: captured.sha256 }),
@@ -406,10 +413,23 @@ function validateHostConfig(config: DogConfig): void {
 	if (!isAbsolute(config.scriptsDirectory)) throw new Error("scriptsDirectory must be absolute");
 }
 
-function requireTarget(target: unknown, goalId: string): string {
-	if (typeof target !== "string" || target.length === 0) throw new Error(`goal ${goalId} must declare a target`);
-	if (isAbsolute(target)) throw new Error(`goal ${goalId} target must be workspace-relative (absolute given)`);
+function requireTarget(target: TargetSpec, goalId: string): TargetSpec {
+	if (target.kind === "path") {
+		if (target.path.length === 0) throw new Error(`goal ${goalId} must declare a target`);
+		if (isAbsolute(target.path)) throw new Error(`goal ${goalId} target must be workspace-relative (absolute given)`);
+		return target;
+	}
+	if (target.ref.trim().length === 0) throw new Error(`goal ${goalId} git target must declare a ref`);
+	const subpath = target.path;
+	if (subpath !== undefined && (subpath.length === 0 || isAbsolute(subpath))) {
+		throw new Error(`goal ${goalId} git target path must be a non-empty workspace-relative path`);
+	}
 	return target;
+}
+
+/** One capture per distinct target inside a single compile. */
+function targetKey(target: TargetSpec): string {
+	return target.kind === "path" ? `path:${target.path}` : `git:${target.ref}:${target.path ?? ""}`;
 }
 
 export function resolveScriptPath(scriptsDirectory: string, script: string): string {

@@ -14,7 +14,10 @@ export function compiledSummary(compiled: CompiledGraph): JsonValue {
 			...(plan.verifier.mode === "programmatic"
 				? { script: plan.verifier.script }
 				: { instruction: plan.verifier.instruction }),
-			target: plan.target,
+			target:
+				plan.target.kind === "path"
+					? plan.target.path
+					: `git:${plan.target.ref}${plan.target.path === undefined ? "" : `:${plan.target.path}`}`,
 			...(plan.input === undefined
 				? {}
 				: { digest: plan.input.digest, exists: plan.input.exists, byteLength: plan.input.byteLength }),

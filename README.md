@@ -99,6 +99,14 @@ existing destination and the rename keeps replacement atomic. `OMP_DOG_NO_COW=1`
 clone attempts. Before materializing, the stored bytes are re-hashed against what was
 recorded, so a corrupted store is refused rather than judged.
 
+**A git target is a commit, not a checkout.** `{"kind": "git", "ref": "HEAD"}` resolves the ref
+to a commit, materializes that tree with `git archive` (which never writes into the repository),
+hashes it like any tree, and records the ref, the resolved commit, and the subtree in the object's
+provenance — the brief tells the verifier which commit it is looking at. Uncommitted work in the
+live tree is not part of the object, so editing files does not move the anchor until you commit.
+The identity is `git:<commit>` (or `git:<commit>:<path>` for a subtree): precise and free, where a
+tree digest costs a full hash pass.
+
 **A directory target is a tree, not an archive.** Every regular file is hashed, and the
 tree is frozen by cloning it (`cp -cR` on APFS, `cp -a --reflink=always` on Linux, plain
 recursive copy otherwise); the verifier's working directory receives that clone, and a
@@ -137,7 +145,11 @@ the session's own; the engine binds it to the bytes and the instruction it was i
 - `contains` carries `required`, `failure` (`fatal` / `tolerable` / `degrade`) and
   `degradeTo`; failures propagate upward until a relation tolerates them.
 - `dependsOn` reads "{source} waits for {target}": a scheduling gate, nothing more.
-- `target` is a workspace-relative path (a file, or a directory frozen as a cloned tree).
+- `target` names what is judged: a workspace-relative path (a file, or a directory frozen as a
+  cloned tree), or `{"kind": "git", "ref": "HEAD"}` for a committed tree, with an optional
+  `"path": "src/lib"` for one subtree of it. A ref that does not resolve settles `missing` (so a
+  graph can gate on a commit that does not exist yet); a workspace that is not a repository at all
+  is a configuration error and throws.
 - The root is `composite` with `constraint: "hard"`.
 
 The full language and operational rules ship as a skill:
@@ -149,17 +161,17 @@ the project).
 ## Inheritance
 
 The inheritance anchor is `sha256({object digest, judgment identity})`, where the object
-digest is `sha256:<content hash>` for a file and `tree:<manifest digest>` for a tree, and
-the judgment identity is the script's content hash, or the sha256 of the instruction text.
-When the anchor matches the graph's most recent terminal run and that run has a verification
-record for the goal, the goal settles `inherited` and no verifier runs. Change the object or
-the instruction and it re-runs. A fresh or fully re-verified submission is normal; reuse is
-what makes iteration cheap.
+digest is `sha256:<content hash>` for a file, `tree:<manifest digest>` for a tree, and
+`git:<commit>[:<path>]` for a committed tree, and the judgment identity is the script's
+content hash, or the sha256 of the instruction text. When the anchor matches the graph's most
+recent terminal run and that run has a verification record for the goal, the goal settles
+`inherited` and no verifier runs. Change the object or the instruction and it re-runs. A fresh
+or fully re-verified submission is normal; reuse is what makes iteration cheap.
 
-The two prefixes never collide, which is what makes the tree scheme a deliberate migration:
-records written while directory targets were `.tar` archives do not match the new anchors, so
-the first run after the switch re-judges every directory-target goal once. File-target goals
-are unaffected and keep inheriting.
+The prefixes never collide, which is what makes each scheme change a deliberate migration: records
+written while directory targets were `.tar` archives do not match the tree anchors, and a `.tar`
+anchor never matches a `git:` one, so the first run after a switch re-judges the affected goals
+once. File-target goals are unaffected and keep inheriting.
 
 ## Limits (read before trusting a green root)
 

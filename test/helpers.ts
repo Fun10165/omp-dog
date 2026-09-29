@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DogEngine } from "../core/engine.ts";
-import type { DogConfig, DogGraphInput, GoalNodeInput, VerifierShape } from "../core/model.ts";
+import type { DogConfig, DogGraphInput, GoalNodeInput, TargetSpec, VerifierShape } from "../core/model.ts";
 import { DogRepository } from "../core/storage.ts";
 import type {
 	AgenticRunner,
@@ -54,29 +54,41 @@ export function mkConfig(root: string, scripts: string): DogConfig {
 }
 
 export function leafNode(
-	overrides: Partial<{ title: string; constraint: "hard" | "soft"; target: string; verifier: VerifierShape }> = {},
+	overrides: Partial<{
+		title: string;
+		constraint: "hard" | "soft";
+		target: string | TargetSpec;
+		verifier: VerifierShape;
+	}> = {},
 ): GoalNodeInput {
+	const { target = "artifact.txt", ...rest } = overrides;
 	return {
 		kind: "leaf",
 		title: "leaf",
 		constraint: "hard",
-		target: "artifact.txt",
+		target: typeof target === "string" ? { kind: "path", path: target } : target,
 		verifier: { mode: "programmatic", script: "file-non-empty" },
-		...overrides,
+		...rest,
 	} as GoalNodeInput;
 }
 
 export function compositeNode(
 	completion: object,
-	overrides: Partial<{ title: string; constraint: "hard" | "soft"; target: string; verifier: VerifierShape }> = {},
+	overrides: Partial<{
+		title: string;
+		constraint: "hard" | "soft";
+		target: string | TargetSpec;
+		verifier: VerifierShape;
+	}> = {},
 ): GoalNodeInput {
+	const { target = "artifact.txt", ...rest } = overrides;
 	return {
 		kind: "composite",
 		title: "root",
 		constraint: "hard",
-		target: "artifact.txt",
+		target: typeof target === "string" ? { kind: "path", path: target } : target,
 		completion: completion as GoalNodeInput["completion"],
-		...overrides,
+		...rest,
 	} as GoalNodeInput;
 }
 

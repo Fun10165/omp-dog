@@ -19,6 +19,8 @@ export interface VerifierTarget {
 	readonly target: string;
 	/** True when a directory capture was unpacked there. */
 	readonly isDirectory: boolean;
+	/** Where the object came from when that is not a live path (a git ref). */
+	readonly provenance?: string;
 	readonly byteLength?: number;
 	readonly sha256?: string;
 }

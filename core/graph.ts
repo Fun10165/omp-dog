@@ -1,7 +1,15 @@
 /** Graph parser, structural validator, and cycle checker for DoG v0.2. */
 
 import { parseBoolExpr } from "./logic.ts";
-import type { ContainsEdge, DependencyEdge, DogGraphInput, GoalId, GoalNodeInput, GraphLimits } from "./model.ts";
+import type {
+	ContainsEdge,
+	DependencyEdge,
+	DogGraphInput,
+	GoalId,
+	GoalNodeInput,
+	GraphLimits,
+	TargetSpec,
+} from "./model.ts";
 import { DOG_SCHEMA_VERSION } from "./model.ts";
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -66,7 +74,7 @@ function parseNodes(value: unknown, limits: GraphLimits, errors: string[]): Reco
 		const kind = parseEnum(node.kind, ["leaf", "composite"] as const, `$.nodes.${id}.kind`, errors);
 		const title = parseNonEmptyString(node.title, `$.nodes.${id}.title`, errors);
 		const constraint = parseEnum(node.constraint, ["hard", "soft"] as const, `$.nodes.${id}.constraint`, errors);
-		const target = parseNonEmptyString(node.target, `$.nodes.${id}.target`, errors);
+		const target = parseTarget(node.target, `$.nodes.${id}.target`, errors);
 		const verifier = parseVerifier(node.verifier, `$.nodes.${id}.verifier`, errors);
 		if (kind === undefined || title === undefined || constraint === undefined || target === undefined) continue;
 		if (kind === "leaf" && verifier === undefined) errors.push(`$.nodes.${id}: leaf requires verifier`);
@@ -134,6 +142,31 @@ function parseDependencies(value: unknown, errors: string[]): DependencyEdge[] |
 			edges.push({ source, target, ...(data === undefined ? {} : { data }) });
 	}
 	return edges;
+}
+
+/** A bare string is the `path` form; an object names a path or a git tree. */
+function parseTarget(value: unknown, path: string, errors: string[]): TargetSpec | undefined {
+	if (typeof value === "string") {
+		if (value.trim().length === 0) {
+			errors.push(`${path}: must be a non-empty string`);
+			return undefined;
+		}
+		return { kind: "path", path: value };
+	}
+	const record = asRecord(value, path, errors);
+	if (record === undefined) return undefined;
+	const kind = parseEnum(record.kind, ["path", "git"] as const, `${path}.kind`, errors);
+	if (kind === undefined) return undefined;
+	if (kind === "path") {
+		checkExactKeys(record, ["kind", "path"], path, errors);
+		const relative = parseNonEmptyString(record.path, `${path}.path`, errors);
+		return relative === undefined ? undefined : { kind: "path", path: relative };
+	}
+	checkExactKeys(record, ["kind", "ref", "path"], path, errors);
+	const ref = parseNonEmptyString(record.ref, `${path}.ref`, errors);
+	const subpath = record.path === undefined ? undefined : parseNonEmptyString(record.path, `${path}.path`, errors);
+	if (ref === undefined) return undefined;
+	return { kind: "git", ref, ...(subpath === undefined ? {} : { path: subpath }) };
 }
 
 function parseVerifier(value: unknown, path: string, errors: string[]): GoalNodeInput["verifier"] | undefined {
