@@ -1,5 +1,6 @@
 /** Restricted, non-interpreted Boolean expressions for DoG completion rules. */
 
+import { isRecord } from "./model.ts";
 import type { AllExpr, AnyExpr, AtLeastExpr, BoolExpr, GoalResult, NotExpr, RefExpr } from "./model.ts";
 
 export type TruthValue = true | false | "unknown";
@@ -201,10 +202,6 @@ function evaluateAtLeast(expression: AtLeastExpr, values: ReadonlyMap<string, bo
 	}
 	if (passed >= expression.count) return true;
 	return passed + unknown >= expression.count ? "unknown" : false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**

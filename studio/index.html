@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>DoG 图编辑器</title>
+		<link rel="stylesheet" href="/vendor/drawflow.min.css" />
+		<style>
+			:root {
+				--ink: #e8edf7;
+				--panel: #1b2130;
+				--panel-2: #242c3d;
+				--line: #3b465c;
+				--contains: #4c7dff;
+				--depends: #f0a020;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			html,
+			body {
+				height: 100%;
+				margin: 0;
+			}
+
+			body {
+				display: flex;
+				flex-direction: column;
+				background: #12161f;
+				color: var(--ink);
+				font:
+					13px/1.5 -apple-system,
+					"PingFang SC",
+					"Noto Sans CJK SC",
+					sans-serif;
+			}
+
+			#bar {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 8px 12px;
+				background: var(--panel);
+				border-bottom: 1px solid var(--line);
+				flex-wrap: wrap;
+			}
+
+			#bar .title {
+				font-weight: 600;
+			}
+
+			#bar .path {
+				color: #93a1bb;
+				font-family: ui-monospace, SFMono-Regular, monospace;
+				font-size: 12px;
+			}
+
+			#bar .spacer {
+				flex: 1;
+			}
+
+			#bar .legend {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+				color: #93a1bb;
+				font-size: 12px;
+			}
+
+			#bar i.wire {
+				display: inline-block;
+				width: 24px;
+				height: 0;
+				border-top: 3px solid var(--contains);
+				margin-left: 8px;
+			}
+
+			#bar i.wire.depends {
+				border-top: 3px dashed var(--depends);
+			}
+
+			button {
+				background: var(--panel-2);
+				color: var(--ink);
+				border: 1px solid var(--line);
+				border-radius: 6px;
+				padding: 5px 10px;
+				cursor: pointer;
+				font: inherit;
+			}
+
+			button:hover {
+				border-color: #5b6a88;
+			}
+
+			button.primary {
+				background: #2b5cff;
+				border-color: #2b5cff;
+			}
+
+			main {
+				flex: 1;
+				min-height: 0;
+				display: flex;
+			}
+
+			#canvas-wrap {
+				flex: 1;
+				position: relative;
+				min-width: 0;
+			}
+
+			#drawflow {
+				position: absolute;
+				inset: 0;
+			}
+
+			/* ---- compact canvas nodes: id, title, a preview of the judgment ---- */
+
+			.dog-node {
+				display: flex;
+				flex-direction: column;
+				gap: 3px;
+				width: 260px;
+			}
+
+			.dog-head {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+			}
+
+			.dog-kind {
+				font-size: 11px;
+				color: #93a1bb;
+				white-space: nowrap;
+			}
+
+			.dog-id {
+				flex: 1;
+				min-width: 0;
+				background: transparent;
+				color: #9fd0ff;
+				border: 1px solid transparent;
+				border-radius: 4px;
+				padding: 1px 3px;
+				font-family: ui-monospace, SFMono-Regular, monospace;
+				font-size: 12px;
+			}
+
+			.dog-id:hover,
+			.dog-title:hover {
+				border-color: var(--line);
+			}
+
+			.dog-title {
+				width: 100%;
+				background: transparent;
+				color: var(--ink);
+				border: 1px solid transparent;
+				border-radius: 4px;
+				padding: 1px 3px;
+				font: inherit;
+				font-weight: 600;
+			}
+
+			.dog-preview {
+				color: #8f9cb6;
+				font-size: 11px;
+				line-height: 1.35;
+				max-height: 24px;
+				overflow: hidden;
+			}
+
+			.drawflow .drawflow-node {
+				background: var(--panel-2);
+				border: 1px solid var(--line);
+				border-radius: 8px;
+				padding: 8px 12px;
+				width: auto;
+			}
+
+			.drawflow .drawflow-node.dog-composite {
+				background: #22304a;
+				border-color: #3f5c8f;
+			}
+
+			.drawflow .drawflow-node.selected {
+				border-color: #7aa2ff;
+				box-shadow: 0 0 0 2px rgba(122, 162, 255, 0.35);
+			}
+
+			/* port colours: containment out of output_1, dependency out of output_2 */
+			.drawflow .drawflow-node .output {
+				background: var(--contains);
+				border-color: var(--contains);
+			}
+
+			.drawflow .drawflow-node .output_2 {
+				background: var(--depends);
+				border-color: var(--depends);
+			}
+
+			.drawflow .drawflow-node .input {
+				background: #6b7a99;
+				border-color: #6b7a99;
+			}
+
+			/* wires: containment solid, dependency dashed */
+			.drawflow .connection .main-path {
+				stroke: var(--contains);
+				stroke-width: 2.5;
+			}
+
+			.drawflow .connection.dog-depends .main-path {
+				stroke: var(--depends);
+				stroke-dasharray: 9 6;
+			}
+
+			/* ---- inspector ---- */
+
+			#inspector {
+				width: 380px;
+				flex: none;
+				border-left: 1px solid var(--line);
+				background: var(--panel);
+				overflow: auto;
+				padding: 10px 12px 24px;
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+
+			#inspector h3 {
+				margin: 0;
+				font-size: 13px;
+				font-weight: 600;
+				color: #9fd0ff;
+				font-family: ui-monospace, SFMono-Regular, monospace;
+				word-break: break-all;
+			}
+
+			#inspector .hint {
+				color: #93a1bb;
+				font-size: 12px;
+			}
+
+			#inspector label {
+				display: flex;
+				flex-direction: column;
+				gap: 3px;
+				color: #93a1bb;
+				font-size: 12px;
+			}
+
+			#inspector .row {
+				display: flex;
+				gap: 6px;
+			}
+
+			#inspector .row label {
+				flex: 1;
+			}
+
+			#inspector input,
+			#inspector select,
+			#inspector textarea {
+				width: 100%;
+				background: #171d29;
+				color: var(--ink);
+				border: 1px solid var(--line);
+				border-radius: 4px;
+				padding: 4px 6px;
+				font: inherit;
+				font-size: 12px;
+			}
+
+			#inspector textarea {
+				font-family: inherit;
+				resize: vertical;
+			}
+
+			#inspector textarea.judgment {
+				min-height: 220px;
+			}
+
+			footer {
+				background: var(--panel);
+				border-top: 1px solid var(--line);
+				padding: 6px 12px;
+				max-height: 22vh;
+				overflow: auto;
+			}
+
+			#status {
+				font-weight: 600;
+			}
+
+			#problems {
+				margin: 4px 0 0;
+				padding-left: 18px;
+				color: #ffc9c9;
+				font-family: ui-monospace, SFMono-Regular, monospace;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<header id="bar">
+			<span class="title">DoG 图编辑器</span>
+			<span id="graph-path" class="path">载入中…</span>
+			<span class="spacer"></span>
+			<button id="add-leaf">新增叶子</button>
+			<button id="add-composite">新增组合</button>
+			<button id="delete">删除选中</button>
+			<button id="relayout">自动布局</button>
+			<button id="fit">适配窗口</button>
+			<button id="validate">校验</button>
+			<button id="reload">重新加载</button>
+			<button id="save" class="primary">保存 ⌘S</button>
+		</header>
+		<main>
+			<div id="canvas-wrap"><div id="drawflow"></div></div>
+			<aside id="inspector">
+				<h3 id="inspector-head">未选中节点</h3>
+				<span class="hint" id="inspector-hint"
+					>点画布上的节点来编辑它的字段；拖动右侧的圆点连线（上：包含，下：依赖）。</span
+				>
+				<label>标题 <input data-field="title" /></label>
+				<div class="row">
+					<label
+						>目标类型
+						<select data-field="targetkind">
+							<option value="path">路径</option>
+							<option value="git">git</option>
+						</select></label
+					>
+					<label
+						>约束
+						<select data-field="constraint">
+							<option value="hard">hard</option>
+							<option value="soft">soft</option>
+						</select></label
+					>
+				</div>
+				<label>对象（路径，或 ref[:子路径]）<input data-field="target" spellcheck="false" /></label>
+				<div class="row">
+					<label
+						>验证方式
+						<select data-field="verifiermode">
+							<option value="agentic">agentic</option>
+							<option value="programmatic">programmatic</option>
+						</select></label
+					>
+					<label>脚本名 <input data-field="script" spellcheck="false" /></label>
+				</div>
+				<label
+					>判据（instruction）<textarea data-field="instruction" class="judgment" spellcheck="false"></textarea>
+				</label>
+				<div class="row">
+					<label
+						>父边：必须
+						<select data-field="required">
+							<option value="true">必须</option>
+							<option value="false">可选</option>
+						</select></label
+					>
+					<label
+						>失败策略
+						<select data-field="failure">
+							<option value="fatal">fatal</option>
+							<option value="tolerable">tolerable</option>
+							<option value="degrade">degrade</option>
+						</select></label
+					>
+				</div>
+				<label>degrade 目标（同级节点 id）<input data-field="degradeto" spellcheck="false" /></label>
+				<label
+					>完成表达式（组合节点；留空 = all(子节点，按画布上下顺序)）<textarea
+						data-field="completion"
+						rows="3"
+						spellcheck="false"
+					></textarea>
+				</label>
+			</aside>
+		</main>
+		<footer>
+			<span id="status">载入中…</span>
+			<span class="legend"><i class="wire"></i>包含（父→子）<i class="wire depends"></i>依赖（先→后）</span>
+			<ul id="problems"></ul>
+		</footer>
+		<script type="module" src="/app.js"></script>
+	</body>
+</html>

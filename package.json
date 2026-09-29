@@ -10,18 +10,24 @@
 	},
 	"scripts": {
 		"lint": "oxlint .",
-		"fmt": "oxfmt cli.ts omp core test examples",
-		"fmt:check": "oxfmt --check cli.ts omp core test examples",
+		"fmt": "oxfmt cli.ts omp core studio test examples",
+		"fmt:check": "oxfmt --check cli.ts omp core studio test examples",
 		"typecheck": "tsc -p tsconfig.json",
 		"test": "vitest run",
 		"check": "bun run lint && bun run fmt:check && bun run typecheck && bun run test",
-		"smoke": "bash dev/smoke.sh"
+		"smoke": "bash dev/smoke.sh",
+		"studio": "bun studio/server.ts"
 	},
 	"devDependencies": {
+		"@types/bun": "^1.4.2",
+		"@types/drawflow": "^0.0.12",
 		"@types/node": "^26.6.3",
 		"oxfmt": "^0.68.0",
 		"oxlint": "^1.83.0",
 		"typescript": "^5.9.2",
 		"vitest": "^4.1.11"
+	},
+	"dependencies": {
+		"drawflow": "^0.0.60"
 	}
 }

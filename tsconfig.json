@@ -3,16 +3,16 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ESNext"],
-    "types": ["node"],
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "allowImportingTsExtensions": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+	"lib": ["ESNext"],
+	"types": ["node", "bun"],
+	"strict": true,
+	"noEmit": true,
+	"skipLibCheck": true,
+	"allowImportingTsExtensions": true,
+	"noUnusedLocals": true,
+	"noUnusedParameters": true,
+	"noFallthroughCasesInSwitch": true
   },
-  "include": ["cli.ts", "omp/**/*.ts", "core/**/*.ts", "test/**/*.ts"],
+  "include": ["cli.ts", "omp/**/*.ts", "core/**/*.ts", "studio/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules"]
 }

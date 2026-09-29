@@ -10,3 +10,7 @@ node_modules/
 
 # scratch state used by manual checks
 .dog-test/
+
+# studio sidecars and backups
+*.bak.*
+*.layout.json

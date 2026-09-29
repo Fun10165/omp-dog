@@ -43,6 +43,14 @@ omp-dog host --project . --model <m>          # 起一个会话,并在会话里�
 **你不需要派发任何子代理**:每个 agentic 判据由 `run` 自己起一个 `omp --mode rpc` 验证会话来判,
 判决通过宿主工具回调回到引擎。你也**不要自己声称某项已验证**——判决只认验证会话交回的内容。
 
+**可视化编辑(人自己改图时用)**:`bun run studio <图文件.json>` 会在 `127.0.0.1` 起一个
+[Drawflow](https://github.com/jerosoler/Drawflow) 画布并在浏览器打开。节点是目标(画布上显示 id/标题/
+判据预览,其余字段在右侧属性面板);**蓝色实线=包含(父→子)、橙色虚线=依赖(先→后)**。
+两条由画布保证、不必手写的性质:组合节点的 `completion` **按子节点在画布上的上下顺序自动推导**
+(`any`/`not`/`atLeast` 才需要自己填覆盖);**保存前跑的是与 `create` 同一个校验器,不通过就报错且
+一个字都不写**。每次保存会留下 `<图>.bak.<本地时间戳>`,节点位置写在 `<图>.layout.json`。
+它是给人用的交互界面,agent 改图仍应直接改 JSON 或让生成脚本产出 JSON。
+
 ## 图(schemaVersion `0.9`)
 
 顶层 6 个必填字段:`schemaVersion` / `id` / `root` / `nodes` / `contains` / `dependsOn`;

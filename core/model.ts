@@ -262,3 +262,8 @@ export function isJsonValue(value: unknown): value is JsonValue {
 	if (typeof value === "object") return Object.values(value).every(isJsonValue);
 	return false;
 }
+
+/** The one record guard: a JSON object, never an array or null. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}

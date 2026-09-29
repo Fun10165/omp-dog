@@ -54,6 +54,9 @@ ln -sfn "$PWD/cli.ts" ~/.local/bin/omp-dog     # then: omp-dog run <graphId> --p
 
 # Start an OMP session whose DoG tools this process serves over RPC
 ./cli.ts host --project . --model <provider/model> [-- <extra omp flags>]
+
+# Edit a graph visually: a Drawflow canvas over one graph file, saved through the validator
+bun run studio examples/do-dog-genesis.graph.json
 ```
 
 Options: `--project <dir>`, `--omp <path>`, `--model <m>`, `--thinking <level>`,
@@ -166,12 +169,42 @@ the session's own; the engine binds it to the bytes and the instruction it was i
   fold into every agentic judgment identity (editing either re-judges the graph), and naming a file
   that cannot be read is an error rather than a silent omission.
 - The root is `composite` with `constraint: "hard"`.
+- `$schema` (optional) is editor metadata: a graph file may name a JSON Schema for tooling, and
+  the parser ignores it rather than folding it into the compiled graph.
 
 The full language and operational rules ship as a skill:
 [`skills/dog-acceptance-gates/SKILL.md`](skills/dog-acceptance-gates/SKILL.md). OMP does not
 discover skills inside arbitrary repositories; install it where the session can see it (a
 managed skill, `~/.omp/agent/skills/<name>/SKILL.md`, or `.omp/skills/<name>/SKILL.md` in
 the project).
+
+## Authoring a graph by hand
+
+`bun run studio <graph-file>` serves a [Drawflow](https://github.com/jerosoler/Drawflow) canvas
+for one graph on `127.0.0.1`, opens it in a browser, and writes the file back on save:
+
+- a **node** is a goal: id, title, and a one-line preview of the judgment sit on the canvas,
+  every other field in the inspector panel on the right;
+- a **blue solid wire** is containment (`parent -> child`), drawn from the upper port;
+- an **orange dashed wire** is a dependency (`source -> target`), drawn from the lower port.
+
+Two properties come from the canvas instead of from hand-editing:
+
+- A composite's `completion` is **derived** from its children in canvas order (top to bottom), so
+  the expression cannot drift out of sync with the containment edges. Fill the `completion` field
+  to override that for `any` / `not` / `atLeast` shapes.
+- Saving runs **the same validator the engine uses** (`create` / `dog_validate`). A graph it
+  rejects is reported in the page and **nothing is written**; the canvas's own structural rules
+  (exactly one root, one parent per node, a composite with children, a leaf with a judgment) are
+  checked before that.
+
+Every save leaves `<graph>.bak.<local timestamp>` behind, and node positions live in
+`<graph>.layout.json` (both patterns are in `.gitignore`). The first save normalizes the file's
+formatting to tab-indented JSON and keeps the author's node order, so later diffs stay small.
+
+The page has no build step: `studio/server.ts` bundles `studio/app.ts` with Bun's bundler on
+request. Everything the canvas *means* lives in `studio/dogflow.ts` — pure functions, covered by
+`test/studio.spec.ts`; the server's write invariants by `test/studio-server.spec.ts`.
 
 ## Inheritance
 
@@ -217,6 +250,7 @@ the engine's own persisted report, never on the model's prose.
 
 ```
 cli.ts              entry: create / run / status / host
+studio/             the visual graph editor (Drawflow canvas + a local server)
 omp/                OMP-facing adapter: rpc client, verifier kernel, host session, report
 core/               engine: graph parsing, capture, scheduling, composition, inheritance
 prompts/verifier.md the persona appended to every verifier session
