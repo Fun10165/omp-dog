@@ -34,7 +34,7 @@ export function createRpcAgenticRunner(options: VerifierKernelOptions): AgenticR
 	const systemPrompt = readVerifierSystemPrompt(options.systemPromptPath);
 	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
-	return async (instruction, workspace, target, env) => {
+	return async (goal, workspace, target, env) => {
 		const sessionDirectory = options.sessionDirectory(env.runId, env.goalId);
 		await mkdir(sessionDirectory, { recursive: true });
 		const session = await RpcSession.start({
@@ -70,7 +70,7 @@ export function createRpcAgenticRunner(options: VerifierKernelOptions): AgenticR
 		const brief = buildVerifierBrief({
 			goalId: target.goalId,
 			title: target.title,
-			instruction,
+			goal,
 			objectPath: target.target,
 			...(target.provenance === undefined ? {} : { provenance: target.provenance }),
 			...(target.background === undefined ? {} : { background: target.background }),
@@ -125,8 +125,7 @@ function verdictToolDefinition(): {
 				verdict: {
 					type: "string",
 					enum: ["pass", "fail", "inconclusive"],
-					description:
-						"pass: the instruction is satisfied. fail: it is violated. inconclusive: you cannot decide honestly.",
+					description: "pass: the goal is satisfied. fail: it is violated. inconclusive: you cannot decide honestly.",
 				},
 				evidence: {
 					description:

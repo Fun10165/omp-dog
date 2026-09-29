@@ -32,7 +32,7 @@ function graphText(): string {
 					title: "叶子",
 					constraint: "hard",
 					target: "report.md",
-					verifier: { mode: "agentic", instruction: "看它" },
+					verifier: { mode: "agentic", goal: "看它" },
 				},
 			},
 			contains: [{ parent: "root", child: "leaf", required: true, failure: "fatal" }],

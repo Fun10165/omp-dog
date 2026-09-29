@@ -14,7 +14,7 @@ session whose verdict comes back as a host-tool call.
 
 - **Is**: a graph of goals; a compile step that freezes every verifier target into
   immutable bytes; exactly two judgment kernels (a script, or a natural-language
-  instruction judged by a session); a content-addressed store; an append-only evidence
+  goal judged by a session); a content-addressed store; an append-only evidence
   ledger; incremental reuse of a prior verdict when neither the object nor the judgment
   changed.
 - **Is not**: a work executor (DoG judges artifacts; producing them is the caller's job),
@@ -128,7 +128,7 @@ form and unpacks it.
 
 **Provenance.** Every agentic verdict records the verifier session's transcript path, so
 "who judged this, and on what evidence" is answerable after the fact. The verdict itself is
-the session's own; the engine binds it to the bytes and the instruction it was issued for.
+the session's own; the engine binds it to the bytes and the goal it was issued for.
 
 ## The graph (schemaVersion `0.9`)
 
@@ -140,9 +140,9 @@ the session's own; the engine binds it to the bytes and the instruction it was i
   "nodes": {
     "root": { "kind": "composite", "title": "…", "constraint": "hard", "target": "article.md",
               "completion": { "op": "all", "items": [{ "op": "ref", "id": "no-slop" }] },
-              "verifier": { "mode": "agentic", "instruction": "overall assertion…" } },
+              "verifier": { "mode": "agentic", "goal": "overall assertion…" } },
     "no-slop": { "kind": "leaf", "title": "…", "constraint": "hard", "target": "article.md",
-                 "verifier": { "mode": "agentic", "instruction": "check for AI slop…" } }
+                 "verifier": { "mode": "agentic", "goal": "check for AI slop…" } }
   },
   "contains": [{ "parent": "root", "child": "no-slop", "required": true, "failure": "fatal" }],
   "dependsOn": []
@@ -161,7 +161,7 @@ the session's own; the engine binds it to the bytes and the instruction it was i
   graph can gate on a commit that does not exist yet); a workspace that is not a repository at all
   is a configuration error and throws.
 - `background` (optional) names workspace-relative markdown files handed to **every** agentic
-  verifier before its instruction, in two tiers: `general` — what this system is and how to read
+  verifier before its goal, in two tiers: `general` — what this system is and how to read
   what is being judged (stable; it changes when the product changes) — and `specific` — only what
   this trigger needs, such as the user's original words and what this submission is meant to solve.
   Judgments like "is any essential aspect missing" or "is this branch unrelated to the goal" are
@@ -212,11 +212,11 @@ request. Everything the canvas *means* lives in `studio/dogflow.ts` — pure fun
 The inheritance anchor is `sha256({object digest, judgment identity})`, where the object
 digest is `sha256:<content hash>` for a file, `tree:<manifest digest>` for a tree, and
 `git:<commit>[:<path>]` for a committed tree, and the judgment identity is the script's
-content hash, or the sha256 of the instruction text *together with the graph's background
+content hash, or the sha256 of the goal text *together with the graph's background
 digest* (a graph with no background hashes exactly as it did before that field existed).
 When the anchor matches the graph's most recent terminal run and that run has a verification
 record for the goal, the goal settles `inherited` and no verifier runs. Change the object,
-the instruction, or the background and it re-runs. A fresh or fully re-verified submission is
+the goal, or the background and it re-runs. A fresh or fully re-verified submission is
 normal; reuse is what makes iteration cheap.
 
 The prefixes never collide, which is what makes each scheme change a deliberate migration: records
@@ -231,7 +231,7 @@ once. File-target goals are unaffected and keep inheriting.
 - **Inheritance anchors, it does not re-verify**: an unchanged agentic leaf reuses its
   prior verdict, so drift in model behavior stays invisible until the anchor changes.
 - **A verdict is written by a model-driven session.** The engine binds it to the frozen
-  bytes and the instruction, which rules out stale or mismatched reuse — it is not
+  bytes and the goal, which rules out stale or mismatched reuse — it is not
   cryptographic proof of independence.
 - Anything that must be reproducible belongs in a programmatic script; anything
   judgment-based is best read as evidence, with human confirmation for high-stakes goals.

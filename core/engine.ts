@@ -387,7 +387,7 @@ export class DogEngine {
 	}
 
 	/**
-	 * A judgment's identity. For an agentic goal the instruction *and* the frozen
+	 * A judgment's identity. For an agentic goal the goal *and* the frozen
 	 * background make up the standard, so editing either re-judges the graph; a
 	 * graph without a background hashes exactly as it did before the field existed,
 	 * which keeps existing anchors valid.
@@ -397,17 +397,20 @@ export class DogEngine {
 			const scriptPath = resolveScriptPath(this.config.scriptsDirectory, verifier.script);
 			return { mode: "programmatic", script: verifier.script, scriptDigest: readScriptDigest(scriptPath) };
 		}
+		// The payload key stays `instruction` on purpose: this object is a hash input,
+		// not a field, and renaming it would invalidate every existing anchor for goal
+		// text that did not change — a re-judge of everything, for a spelling.
 		const payload =
 			background === undefined
-				? { instruction: verifier.instruction }
+				? { instruction: verifier.goal }
 				: {
-						instruction: verifier.instruction,
+						instruction: verifier.goal,
 						background: {
 							general: background.general?.sha256 ?? null,
 							specific: background.specific?.sha256 ?? null,
 						},
 					};
-		return { mode: "agentic", instructionHash: `sha256:${sha256Json(payload)}` };
+		return { mode: "agentic", goalHash: `sha256:${sha256Json(payload)}` };
 	}
 
 	private parse(value: unknown): DogGraphInput {

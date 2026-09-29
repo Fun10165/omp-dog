@@ -71,7 +71,7 @@ describe("agentic kernel", () => {
 		expect(verdict.sessionFile).toBe(join(sessionRoot, "run-1", "leaf", "fake-session.jsonl"));
 	});
 
-	it("passes the frozen object, the background, and the instruction in the brief", async () => {
+	it("passes the frozen object, the background, and the goal in the brief", async () => {
 		const root = await workspace();
 		const sessionRoot = join(root, "sessions");
 		const record = join(root, "record.json");
@@ -101,19 +101,19 @@ describe("agentic kernel", () => {
 		expect(written.argv[written.argv.indexOf("--session-dir") + 1]).toBe(join(sessionRoot, "run-2", "leaf"));
 		const systemPrompt = written.argv[written.argv.indexOf("--append-system-prompt") + 1];
 		expect(systemPrompt).toContain("DoG verifier");
-		// The background precedes the instruction, in tier order, and the instruction survives verbatim.
+		// The background precedes the goal, in tier order, and the goal survives verbatim.
 		expect(written.prompt).toContain("DoG turns a non-formal goal into verified subgoals.");
 		expect(written.prompt).toContain("We are judging the graph that gates report.md.");
 		const generalAt = written.prompt.indexOf("the judgment contract every verifier works under");
 		const specificAt = written.prompt.indexOf("what this submission is");
-		const instructionAt = written.prompt.indexOf("Instruction (the only standard");
+		const goalAt = written.prompt.indexOf("Goal (the only standard");
 		// Both labels must actually be present: an absent label would make a bare
 		// `indexOf` comparison pass by accident and hide a broken brief.
 		expect(generalAt).toBeGreaterThanOrEqual(0);
 		expect(specificAt).toBeGreaterThanOrEqual(0);
-		expect(instructionAt).toBeGreaterThanOrEqual(0);
+		expect(goalAt).toBeGreaterThanOrEqual(0);
 		expect(generalAt).toBeLessThan(specificAt);
-		expect(specificAt).toBeLessThan(instructionAt);
+		expect(specificAt).toBeLessThan(goalAt);
 	});
 
 	it("settles inconclusive when a finished session never submits a verdict", async () => {

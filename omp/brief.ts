@@ -1,4 +1,4 @@
-/** What each verifier session is told: the frozen object, the instruction, and the delivery contract. */
+/** What each verifier session is told: the frozen object, the goal, and the delivery contract. */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,7 @@ export function readVerifierSystemPrompt(path: string = VERIFIER_SYSTEM_PROMPT_F
 export interface BriefOptions {
 	readonly goalId: string;
 	readonly title: string;
-	readonly instruction: string;
+	readonly goal: string;
 	/** Path of the object relative to the session's working directory. */
 	readonly objectPath: string;
 	readonly objectBytes?: number;
@@ -27,7 +27,7 @@ export interface BriefOptions {
 	readonly objectIsDirectory: boolean;
 	/** Where the object was frozen from, when that is worth naming (a git ref). */
 	readonly provenance?: string;
-	/** Frozen background text every verifier reads before the instruction, in two tiers. */
+	/** Frozen background text every verifier reads before the goal, in two tiers. */
 	readonly background?: { readonly general?: string; readonly specific?: string };
 }
 
@@ -55,8 +55,8 @@ export function buildVerifierBrief(options: BriefOptions): string {
 			: "That file is the frozen capture; it is complete and final.",
 		...(options.provenance === undefined ? [] : [`Frozen from: ${options.provenance}.`]),
 		"",
-		"Instruction (the only standard you judge by):",
-		options.instruction,
+		"Goal (the only standard you judge by):",
+		options.goal,
 		"",
 		"Gather the evidence you need with your own judgment; there is no fixed evidence format.",
 		`When you are done, call the \`${VERDICT_TOOL_NAME}\` tool exactly once with your verdict and the evidence, then stop.`,

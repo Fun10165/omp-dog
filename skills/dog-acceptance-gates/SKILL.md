@@ -90,7 +90,7 @@ omp-dog host --project . --model <m>          # 起一个会话,并在会话里�
 - `{"mode":"programmatic","script":"file-non-empty"}` — 脚本库 `<repo>/scripts/`;引擎把**冻结副本路径**
   作为唯一参数传给脚本,脚本往 stdout 写 `{"verdict":"pass|fail|inconclusive","evidence":<任意 JSON>}`。
   非零退出或输出不可解析 = `inconclusive`。要新规则就加脚本,别指望在话里描述规则。
-- `{"mode":"agentic","instruction":"……"}` — instruction 就是判据。引擎把它连同**冻结的捕获副本**
+- `{"mode":"agentic","goal":"……"}` — goal 就是判据。引擎把它连同**冻结的捕获副本**
   交给一个只读的验证会话;那个会话必须调 `dog_submit_verdict` 交回结论与证据。
 
 `root` 必须是 `composite` 且 `constraint: "hard"`。
@@ -115,7 +115,7 @@ omp-dog host --project . --model <m>          # 起一个会话,并在会话里�
 | `rootState: "needs_replan"` | 有节点判不了 | **不要猜**;如实转达「无法自动判定 + 原因」 |
 | `rootState: "partial_success"` | 根是 partial 且部署允许 | 说明哪项是 tolerable 失败 |
 | goal `inherited` | 对象与判据都没变,复用上次判决 | 正常,`inheritedFrom` 指向来源 run |
-| goal `needs_human` | 判据执行器诚实说判不了 | 转达理由;要更精确就改 instruction 后重新 create |
+| goal `needs_human` | 判据执行器诚实说判不了 | 转达理由;要更精确就改 goal 后重新 create |
 | goal `blocked` | 依赖项未完成 | 看 `dependsOn` |
 
 每个 agentic 目标的判决里带 `verifier.sessionFile`(验证会话的转写路径):要复盘「它凭什么这么判」,
@@ -126,13 +126,13 @@ omp-dog host --project . --model <m>          # 起一个会话,并在会话里�
 - **一句话一个判据**,判据里写清标准与不可接受的形态;不要写「写得好不好」这种没有落点的要求。
 - 判据要能被**独立复核**:合格的判据自己决定取证方式,但结论必须能对着证据重新检查。
 - 判不了就让它判不了:验证会话说 `inconclusive` 是设计内的诚实,不是失败,更不是通过。
-- 机械规则(文件存在、字数、禁用词表)写脚本;需要判断力的写 instruction。
+- 机械规则(文件存在、字数、禁用词表)写脚本;需要判断力的写 goal。
 
 ## 常见错误
 
 1. `target` 用了绝对路径 → 拒绝;必须是工作区内的**相对路径**。
 2. **把整棵子树写成全程序化** → 那不是 DoG;全规则的部分交给普通测试/脚本。
-3. `verifier` 里写了 `mode/script/instruction` 以外的字段(id/参数/工具白名单) → 不存在,会报错。
+3. `verifier` 里写了 `mode/script/goal` 以外的字段(id/参数/工具白名单) → 不存在,会报错。
 4. leaf 忘写 `verifier`,节点忘写 `target`,或 root 不是 `hard` → `create` 直接拦。
 5. `dependsOn` 方向写反 → 顺序反了,或者无谓地串行。
 6. 产物改了却不重新 `create` → 判的仍是旧字节(引擎按捕获摘要判继承)。

@@ -84,7 +84,7 @@ describe("engine", () => {
 			graph(
 				{
 					root: compositeNode({ op: "all", items: [{ op: "ref", id: "leaf" }] }),
-					leaf: leafNode({ target: "bundle", verifier: { mode: "agentic", instruction: "is it there" } }),
+					leaf: leafNode({ target: "bundle", verifier: { mode: "agentic", goal: "is it there" } }),
 				},
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 			),
@@ -216,10 +216,10 @@ describe("engine", () => {
 					root: compositeNode(
 						{ op: "all", items: [{ op: "ref", id: "leaf" }] },
 						{
-							verifier: { mode: "agentic", instruction: "does the whole hold together" },
+							verifier: { mode: "agentic", goal: "does the whole hold together" },
 						},
 					),
-					leaf: leafNode({ verifier: { mode: "agentic", instruction: "is the leaf fine" } }),
+					leaf: leafNode({ verifier: { mode: "agentic", goal: "is the leaf fine" } }),
 				},
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 				"demoted",
@@ -243,10 +243,10 @@ describe("engine", () => {
 					root: compositeNode(
 						{ op: "all", items: [{ op: "ref", id: "leaf" }] },
 						{
-							verifier: { mode: "agentic", instruction: "does the whole hold together" },
+							verifier: { mode: "agentic", goal: "does the whole hold together" },
 						},
 					),
-					leaf: leafNode({ verifier: { mode: "agentic", instruction: "is the leaf fine" } }),
+					leaf: leafNode({ verifier: { mode: "agentic", goal: "is the leaf fine" } }),
 				},
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 				"skipped-assertion",
@@ -254,7 +254,7 @@ describe("engine", () => {
 			{ captureBaseDir: root },
 		);
 		const failing = await makeFixture(root, {
-			agentic: async (_instruction, _workspace, target) =>
+			agentic: async (_goal, _workspace, target) =>
 				target.goalId === "leaf" ? { state: "fail", evidence: {} } : { state: "pass", evidence: {} },
 		});
 		const run = await failing.engine.run(compiled.input.id);
@@ -271,7 +271,7 @@ describe("engine", () => {
 			graph(
 				{
 					root: compositeNode({ op: "all", items: [{ op: "ref", id: "leaf" }] }),
-					leaf: leafNode({ verifier: { mode: "agentic", instruction: "is it there" } }),
+					leaf: leafNode({ verifier: { mode: "agentic", goal: "is it there" } }),
 				},
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 				"inherited",
@@ -291,7 +291,7 @@ describe("engine", () => {
 			graph(
 				{
 					root: compositeNode({ op: "all", items: [{ op: "ref", id: "leaf" }] }),
-					leaf: leafNode({ verifier: { mode: "agentic", instruction: "is it there" } }),
+					leaf: leafNode({ verifier: { mode: "agentic", goal: "is it there" } }),
 				},
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 				"changed",
@@ -307,7 +307,7 @@ describe("engine", () => {
 	it("holds a dependent goal until its dependency reaches a terminal state", async () => {
 		const root = await fixtureRoot();
 		const events: string[] = [];
-		const agentic: AgenticRunner = async (_instruction, _workspace, target) => {
+		const agentic: AgenticRunner = async (_goal, _workspace, target) => {
 			events.push(`start:${target.goalId}`);
 			await sleep(10);
 			events.push(`end:${target.goalId}`);
@@ -327,8 +327,8 @@ describe("engine", () => {
 							{ op: "ref", id: "b" },
 						],
 					}),
-					a: leafNode({ title: "a", verifier: { mode: "agentic", instruction: "judge a" } }),
-					b: leafNode({ title: "b", verifier: { mode: "agentic", instruction: "judge b" } }),
+					a: leafNode({ title: "a", verifier: { mode: "agentic", goal: "judge a" } }),
+					b: leafNode({ title: "b", verifier: { mode: "agentic", goal: "judge b" } }),
 				},
 				contains: [
 					{ parent: "root", child: "a", required: true, failure: "fatal" },
@@ -366,9 +366,9 @@ describe("engine", () => {
 							{ op: "ref", id: "c" },
 						],
 					}),
-					a: leafNode({ title: "a", verifier: { mode: "agentic", instruction: "judge" } }),
-					b: leafNode({ title: "b", verifier: { mode: "agentic", instruction: "judge" } }),
-					c: leafNode({ title: "c", verifier: { mode: "agentic", instruction: "judge" } }),
+					a: leafNode({ title: "a", verifier: { mode: "agentic", goal: "judge" } }),
+					b: leafNode({ title: "b", verifier: { mode: "agentic", goal: "judge" } }),
+					c: leafNode({ title: "c", verifier: { mode: "agentic", goal: "judge" } }),
 				},
 				[
 					{ parent: "root", child: "a", required: true, failure: "fatal" },
@@ -396,7 +396,7 @@ describe("engine", () => {
 			...graph(
 				{
 					root: compositeNode({ op: "all", items: [{ op: "ref", id: "leaf" }] }),
-					leaf: leafNode({ verifier: { mode: "agentic", instruction: "judge the object" } }),
+					leaf: leafNode({ verifier: { mode: "agentic", goal: "judge the object" } }),
 				},
 				[{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
 				id,
@@ -414,7 +414,7 @@ describe("engine", () => {
 		expect(calls[0]?.target.background?.general).toContain("DoG turns a non-formal goal");
 		expect(calls[0]?.target.background?.specific).toContain("We are judging the graph");
 
-		// Same instruction, same background: nothing to judge again.
+		// Same goal, same background: nothing to judge again.
 		const second = await fixture.engine.run(compiled.input.id);
 		expect(second.goals.leaf?.state).toBe("inherited");
 		expect(calls).toHaveLength(1);

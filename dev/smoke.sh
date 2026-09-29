@@ -19,13 +19,13 @@ cat > "$work/graphs.mjs" <<'JS'
 // Emit the smoke graphs, so the shell stays readable.
 import { writeFileSync } from "node:fs";
 const dir = process.argv[2];
-const leaf = (id, title, target, instruction) => [id, {
+const leaf = (id, title, target, goal) => [id, {
   kind: "leaf", title, constraint: "hard", target,
-  ...(instruction === undefined
+  ...(goal === undefined
     ? { verifier: { mode: "programmatic", script: "file-non-empty" } }
-    : { verifier: { mode: "agentic", instruction } }),
+    : { verifier: { mode: "agentic", goal } }),
 }];
-const graph = (id, target, instruction) => ({
+const graph = (id, target, goal) => ({
   schemaVersion: "0.9",
   id,
   root: "root",
@@ -34,7 +34,7 @@ const graph = (id, target, instruction) => ({
       kind: "composite", title: "root", constraint: "hard", target,
       completion: { op: "all", items: [{ op: "ref", id: "leaf" }] },
     }],
-    leaf("leaf", "smoke leaf", target, instruction),
+    leaf("leaf", "smoke leaf", target, goal),
   ]),
   contains: [{ parent: "root", child: "leaf", required: true, failure: "fatal" }],
   dependsOn: [],

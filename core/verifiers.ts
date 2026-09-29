@@ -11,7 +11,7 @@ export interface Verdict {
 	readonly sessionFile?: string;
 }
 
-/** What one judgment is about, beyond the instruction text. */
+/** What one judgment is about, beyond the goal text. */
 export interface VerifierTarget {
 	readonly goalId: GoalId;
 	readonly title: string;
@@ -36,9 +36,9 @@ export interface VerifierExecutionEnv {
 /** Programmatic kernel: runs a host-registered script with the frozen object's path. */
 export type ProgrammaticRunner = (script: string, inputPath: string, env: VerifierExecutionEnv) => Promise<Verdict>;
 
-/** Agentic kernel: hands one instruction plus the frozen object to a verifier session. */
+/** Agentic kernel: hands one goal plus the frozen object to a verifier session. */
 export type AgenticRunner = (
-	instruction: string,
+	goal: string,
 	/** Working directory holding the frozen object; the verifier may read nothing else. */
 	workspace: string,
 	target: VerifierTarget,
@@ -64,7 +64,7 @@ export interface PreparedObject {
 /**
  * Run one plan through the selected kernel. The engine holds none of the
  * judgment semantics: programmatic goes to a script, agentic to a session that
- * receives the instruction text and nothing else.
+ * receives the goal text and nothing else.
  */
 export async function runPlan(
 	plan: AcceptancePlan,
@@ -88,7 +88,7 @@ export async function runPlan(
 	if (agentic === undefined) {
 		return { state: "inconclusive", observation: { outcome: "agentic kernel unavailable" } };
 	}
-	const verdict = await agentic(plan.verifier.instruction, prepared.workspace, target, env);
+	const verdict = await agentic(plan.verifier.goal, prepared.workspace, target, env);
 	return {
 		state: verdict.state,
 		observation: evidenceToObservation(verdict),

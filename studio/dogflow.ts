@@ -41,7 +41,7 @@ export interface CanvasNode {
 	/** A workspace path, or `ref` / `ref:subpath` when `targetkind` is `git`. */
 	readonly target: string;
 	readonly verifiermode: "agentic" | "programmatic";
-	readonly instruction: string;
+	readonly goal: string;
 	readonly script: string;
 	readonly required: boolean;
 	readonly failure: Failure;
@@ -168,7 +168,7 @@ export function toCanvas(document: Document, layout: Layout = {}): Canvas {
 			targetkind: target.kind,
 			target: target.value,
 			verifiermode: programmatic ? "programmatic" : "agentic",
-			instruction: programmatic ? "" : text(verifier.instruction),
+			goal: programmatic ? "" : text(verifier.goal),
 			script: programmatic ? text(verifier.script) : "",
 			required: edge?.required !== false,
 			failure: edge?.failure === "tolerable" || edge?.failure === "degrade" ? edge.failure : "fatal",
@@ -258,12 +258,12 @@ function verifierOf(node: CanvasNode, problems: string[]): Record<string, unknow
 		}
 		return { mode: "programmatic", script };
 	}
-	const instruction = node.instruction.trim();
-	if (instruction.length === 0) {
-		if (required) problems.push(`${node.id}: 判据（instruction）为空`);
+	const goal = node.goal.trim();
+	if (goal.length === 0) {
+		if (required) problems.push(`${node.id}: 判据（goal）为空`);
 		return undefined;
 	}
-	return { mode: "agentic", instruction };
+	return { mode: "agentic", goal };
 }
 
 /** The containment edge a child sits on: its own required/failure/degradeTo fields. */

@@ -34,14 +34,14 @@ function sample(): Record<string, unknown> {
 				title: "甲",
 				constraint: "hard",
 				target: "report.md",
-				verifier: { mode: "agentic", instruction: "看甲" },
+				verifier: { mode: "agentic", goal: "看甲" },
 			},
 			b: {
 				kind: "leaf",
 				title: "乙",
 				constraint: "hard",
 				target: "report.md",
-				verifier: { mode: "agentic", instruction: "看乙" },
+				verifier: { mode: "agentic", goal: "看乙" },
 			},
 		},
 		contains: [
@@ -144,7 +144,7 @@ describe("the canvas bridge", () => {
 				title: "甲",
 				constraint: "hard",
 				target: { kind: "git", ref: "HEAD", path: "docs" },
-				verifier: { mode: "agentic", instruction: "看甲" },
+				verifier: { mode: "agentic", goal: "看甲" },
 			},
 		};
 		const canvas = toCanvas(original, {});
@@ -176,7 +176,7 @@ describe("the canvas bridge", () => {
 		const canvas = toCanvas(sample(), {});
 		const withAssertion: Canvas = {
 			...canvas,
-			nodes: canvas.nodes.map((node) => (node.id === "root" ? { ...node, instruction: "整体断言" } : node)),
+			nodes: canvas.nodes.map((node) => (node.id === "root" ? { ...node, goal: "整体断言" } : node)),
 		};
 		const written = fromCanvas(withAssertion).nodes as Record<string, Record<string, unknown>>;
 		expect(Object.keys(written.root ?? {})).toEqual([

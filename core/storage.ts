@@ -90,12 +90,23 @@ export class DogRepository {
 			throw new Error(`invalid persisted graph record ${index.graphDigest}`);
 		}
 		// Revisions compiled before targets became a union carry a bare string; the
-		// object path is then the string itself.
+		// object path is then the string itself. Revisions compiled before the rename
+		// call an agentic standard `instruction`; the plan's `judgment` (the anchor)
+		// is unaffected, so an unchanged goal text keeps inheriting.
 		const acceptancePlans: Record<string, AcceptancePlan> = {};
 		for (const [goalId, plan] of Object.entries(record.acceptancePlans)) {
 			const target = plan.target as unknown;
+			const verifier = plan.verifier as unknown as
+				| { readonly mode?: string; readonly instruction?: string }
+				| undefined;
+			const renamed =
+				verifier !== undefined && verifier.mode === "agentic" && typeof verifier.instruction === "string"
+					? { ...plan, verifier: { mode: "agentic" as const, goal: verifier.instruction } }
+					: plan;
 			acceptancePlans[goalId] =
-				typeof target === "string" ? { ...plan, target: { kind: "path", path: target }, objectPath: target } : plan;
+				typeof target === "string"
+					? { ...renamed, target: { kind: "path", path: target }, objectPath: target }
+					: renamed;
 		}
 		return {
 			input: record.input,

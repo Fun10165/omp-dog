@@ -38,7 +38,7 @@ interface NodeFields {
 	targetkind: string;
 	target: string;
 	verifiermode: string;
-	instruction: string;
+	goal: string;
 	script: string;
 	required: string;
 	failure: string;
@@ -56,7 +56,7 @@ const INSPECTOR_FIELDS: readonly InspectorField[] = [
 	"target",
 	"verifiermode",
 	"script",
-	"instruction",
+	"goal",
 	"required",
 	"failure",
 	"degradeto",
@@ -117,8 +117,8 @@ function nodeElement(key: string): HTMLElement | null {
 
 function previewOf(fields: NodeFields, kind: Kind): string {
 	if (fields.verifiermode === "programmatic" && fields.script.trim().length > 0) return `脚本 ${fields.script.trim()}`;
-	const instruction = fields.instruction.trim().replace(/\s+/gu, " ");
-	if (instruction.length > 0) return instruction.length > 72 ? `${instruction.slice(0, 72)}…` : instruction;
+	const goal = fields.goal.trim().replace(/\s+/gu, " ");
+	if (goal.length > 0) return goal.length > 72 ? `${goal.slice(0, 72)}…` : goal;
 	return kind === "composite" ? "（组合：由子节点与完成表达式决定）" : "";
 }
 
@@ -142,7 +142,7 @@ function kindOfKey(key: string): Kind {
 function toggleConditional(): void {
 	const programmatic = inputs.verifiermode?.value === "programmatic";
 	const degrade = inputs.failure?.value === "degrade";
-	if (inputs.instruction !== undefined) inputs.instruction.style.display = programmatic ? "none" : "";
+	if (inputs.goal !== undefined) inputs.goal.style.display = programmatic ? "none" : "";
 	if (inputs.script !== undefined) inputs.script.style.display = programmatic ? "" : "none";
 	if (inputs.degradeto !== undefined) inputs.degradeto.style.display = degrade ? "" : "none";
 }
@@ -233,7 +233,7 @@ function render(edited: Canvas): void {
 			targetkind: node.targetkind,
 			target: node.target,
 			verifiermode: node.verifiermode,
-			instruction: node.instruction,
+			goal: node.goal,
 			script: node.script,
 			required: node.required ? "true" : "false",
 			failure: node.failure,
@@ -268,7 +268,7 @@ function collect(): Canvas {
 			targetkind: fields.targetkind === "git" ? "git" : "path",
 			target: fields.target,
 			verifiermode: fields.verifiermode === "programmatic" ? "programmatic" : "agentic",
-			instruction: fields.instruction,
+			goal: fields.goal,
 			script: fields.script,
 			required: fields.required !== "false",
 			failure: failure === "tolerable" || failure === "degrade" ? failure : "fatal",
@@ -417,7 +417,7 @@ function addNode(kind: Kind): void {
 		targetkind: "path",
 		target: "",
 		verifiermode: "agentic",
-		instruction: "",
+		goal: "",
 		script: "",
 		required: "true",
 		failure: "fatal",
@@ -470,7 +470,7 @@ async function main(): Promise<void> {
 			const titleInput = nodeElement(key)?.querySelector<HTMLInputElement>(".dog-title");
 			if (titleInput !== null && titleInput !== undefined) titleInput.value = target.value;
 		}
-		if (name === "instruction" || name === "script" || name === "verifiermode") paintNode(key, kindOfKey(key));
+		if (name === "goal" || name === "script" || name === "verifiermode") paintNode(key, kindOfKey(key));
 	});
 
 	canvas.addEventListener("input", (event) => {

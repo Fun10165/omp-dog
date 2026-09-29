@@ -11,9 +11,7 @@ export function compiledSummary(compiled: CompiledGraph): JsonValue {
 		acceptancePlans: Object.entries(compiled.acceptancePlans).map(([goalId, plan]) => ({
 			goalId,
 			mode: plan.verifier.mode,
-			...(plan.verifier.mode === "programmatic"
-				? { script: plan.verifier.script }
-				: { instruction: plan.verifier.instruction }),
+			...(plan.verifier.mode === "programmatic" ? { script: plan.verifier.script } : { goal: plan.verifier.goal }),
 			target:
 				plan.target.kind === "path"
 					? plan.target.path

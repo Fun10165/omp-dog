@@ -114,12 +114,11 @@ export function stubAgentic(verdict: Verdict = { state: "pass", evidence: { stub
 /** An agentic kernel that records every call and answers from the supplied table. */
 export function recordingAgentic(answers: (target: VerifierTarget) => Verdict | Promise<Verdict>): {
 	runner: AgenticRunner;
-	calls: Array<{ target: VerifierTarget; instruction: string; workspace: string; env: VerifierExecutionEnv }>;
+	calls: Array<{ target: VerifierTarget; goal: string; workspace: string; env: VerifierExecutionEnv }>;
 } {
-	const calls: Array<{ target: VerifierTarget; instruction: string; workspace: string; env: VerifierExecutionEnv }> =
-		[];
-	const runner: AgenticRunner = async (instruction, workspace, target, env) => {
-		calls.push({ target, instruction, workspace, env });
+	const calls: Array<{ target: VerifierTarget; goal: string; workspace: string; env: VerifierExecutionEnv }> = [];
+	const runner: AgenticRunner = async (goal, workspace, target, env) => {
+		calls.push({ target, goal, workspace, env });
 		return answers(target);
 	};
 	return { runner, calls };

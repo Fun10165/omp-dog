@@ -206,9 +206,10 @@ function parseVerifier(value: unknown, path: string, errors: string[]): GoalNode
 		const script = parseNonEmptyString(record.script, `${path}.script`, errors);
 		return script === undefined ? undefined : { mode: "programmatic", script };
 	}
-	checkExactKeys(record, ["mode", "instruction"], path, errors);
-	const instruction = parseNonEmptyString(record.instruction, `${path}.instruction`, errors);
-	return instruction === undefined ? undefined : { mode: "agentic", instruction };
+	checkExactKeys(record, ["mode", "goal"], path, errors);
+	if (record.instruction !== undefined) errors.push(`${path}.instruction: the field is called "goal" now`);
+	const goal = parseNonEmptyString(record.goal, `${path}.goal`, errors);
+	return goal === undefined ? undefined : { mode: "agentic", goal };
 }
 
 function validateGraphReferences(

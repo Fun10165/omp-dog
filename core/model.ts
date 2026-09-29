@@ -49,10 +49,10 @@ export interface AtLeastExpr {
 
 export type BoolExpr = RefExpr | AllExpr | AnyExpr | NotExpr | AtLeastExpr;
 
-/** One of exactly two judgment kernels: a script, or a natural-language instruction. */
+/** One of exactly two judgment kernels: a script, or a natural-language goal. */
 export type VerifierShape =
 	| { readonly mode: "programmatic"; readonly script: string }
-	| { readonly mode: "agentic"; readonly instruction: string };
+	| { readonly mode: "agentic"; readonly goal: string };
 
 /**
  * What a goal judges: a workspace path, or a git tree at a ref.
@@ -110,7 +110,7 @@ export interface DogGraphInput {
 	readonly root: GoalId;
 	/**
 	 * Workspace-relative markdown files handed to every agentic verifier, before
-	 * the instruction: `general` first (what DoG is, how to read a graph),
+	 * the goal: `general` first (what DoG is, how to read a graph),
 	 * `specific` second (this submission's own context). Their contents are part
 	 * of the judgment identity, so editing either re-judges the graph.
 	 */
@@ -167,7 +167,7 @@ export interface CapturedInput {
 /** Deterministic or agentic: the judgment identity half of the inheritance anchor. */
 export type JudgmentIdentity =
 	| { readonly mode: "programmatic"; readonly script: string; readonly scriptDigest: string }
-	| { readonly mode: "agentic"; readonly instructionHash: string };
+	| { readonly mode: "agentic"; readonly goalHash: string };
 
 /** What one goal is judged by, and the object it is judged against. */
 export interface AcceptancePlan {
