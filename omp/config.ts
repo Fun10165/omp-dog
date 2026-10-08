@@ -4,8 +4,19 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { DogConfig } from "../core/model.ts";
 
-/** Read-only built-in tools a verifier session starts with. */
-export const VERIFIER_TOOLS = ["read", "grep", "glob", "find"] as const;
+/** Read-only built-in tools a verifier session starts with.
+ *
+ * `find` is not in the default set: it resolves through the judge model and is
+ * expensive, and an OMP build where it is disabled (find.enabled=off) rejects a
+ * session that asks for it. Add it back per deployment with
+ * `OMP_DOG_VERIFIER_TOOLS=read,grep,glob,find`. */
+export const VERIFIER_TOOLS: readonly string[] = (() => {
+	const fromEnv = process.env.OMP_DOG_VERIFIER_TOOLS;
+	const parsed = fromEnv === undefined
+		? []
+		: fromEnv.split(",").map((name) => name.trim()).filter((name) => name.length > 0);
+	return parsed.length > 0 ? parsed : ["read", "grep", "glob"];
+})();
 
 /** The one tool a verifier session calls to hand its verdict back over RPC. */
 export const VERDICT_TOOL_NAME = "dog_submit_verdict";
