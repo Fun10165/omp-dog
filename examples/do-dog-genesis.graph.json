@@ -111,7 +111,7 @@
 			"target": "generated-dog.graph.json",
 			"verifier": {
 				"mode": "agentic",
-				"goal": "逐层查看:同层的每个节点都在回答同一个层级的抽象问题(如第一层都是'目标由哪些本质方面构成')。不能有任何一层级中存在另一层级的节点(把'单件判据'当成'方面'、或把'方面'当成'执行步骤')?"
+				"goal": "逐层查看:同层的每个节点都在回答同一个层级的抽象问题(如第一层都是'目标由哪些本质方面构成')。不能有任何一层级中存在另一层级的节点。"
 			}
 		},
 		"no-execution-details": {
@@ -186,6 +186,14 @@
 					{
 						"op": "ref",
 						"id": "dependency-direction"
+					},
+					{
+						"op": "ref",
+						"id": "failure-severity"
+					},
+					{
+						"op": "ref",
+						"id": "completion-semantics"
 					}
 				]
 			}
@@ -276,7 +284,27 @@
 			"target": "generated-dog.graph.json",
 			"verifier": {
 				"mode": "agentic",
-				"goal": "每个叶子的目标中没有出现黑话，即没有背景或上下文无法看懂的名词或者动词。"
+				"goal": "每个叶子的目标里没有黑话，也没有本图未定义的生造词组（LLM、prompt、实例化、source/target 这类领域内通用技术词不算，但「门」（gate，测试的黑话）「口径」（用来故意混淆条件，统计口径区别的用词））不能出现。"
+			}
+		},
+		"failure-severity": {
+			"kind": "leaf",
+			"title": "每个节点的失败严格程度和节点本身的重要性相匹配",
+			"constraint": "hard",
+			"target": "generated-dog.graph.json",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "每个节点的失败严格程度和节点本身的重要性相匹配，不过严也不过松"
+			}
+		},
+		"completion-semantics": {
+			"kind": "leaf",
+			"title": "每个组合节点对子节点的组合表达式符合语义",
+			"constraint": "hard",
+			"target": "generated-dog.graph.json",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "每个组合节点对子节点的组合表达式符合语义。"
 			}
 		}
 	},
@@ -386,6 +414,18 @@
 		{
 			"parent": "group-complete",
 			"child": "no-over-design",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-engineering",
+			"child": "failure-severity",
+			"required": true,
+			"failure": "fatal"
+		},
+		{
+			"parent": "group-engineering",
+			"child": "completion-semantics",
 			"required": true,
 			"failure": "fatal"
 		}

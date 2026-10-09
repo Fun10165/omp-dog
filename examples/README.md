@@ -47,6 +47,16 @@ omp-dog run do-dog-genesis --project .     # 14 条判据 = 14 个验证会话�
 
 面向「给团队写的同步报告」的全 agentic 例子。
 
+## 5. `paper-excellence.graph.json` — 「优秀论文的标准」
+
+对象是一篇论文(`paper.pdf`,允许在编译时缺失)。这张图由第一性原理分解得来,不是条目清单:
+
+- **根(公理)**:读者只读这份材料,就能相信并使用作者给出的判断。
+- **五条一级性质**:主张(那个被传出去的判断本身)、依据(为什么它可以被相信)、不失真(材料与真相之间没有系统性偏移)、记录(别人能不能自己重做)、接收(读者能不能取走);共 41 个节点,其中 28 片是可独立判定的叶子。
+- **失败严格度**:主张、依据、不失真、记录四组任一叶子失败即致命;接收组及其叶子标 `tolerable`(降级为 `partial_success`,如实记录,不静默通过)。
+- **判据来源**:Nature 编辑标准与报告标准(期刊口径)、NeurIPS 检查清单与 ICLR/ICML 审稿指引(会议口径,本图未采用)、三篇代表作(DeepSeek-R1 的 Nature 正式版、GPT-3、Attention Is All You Need)。
+- 这套写法的完整方法(公理、失败方式递归、四个问题、划分法、防错放检验)见 [`skills/dog-graph-authoring/SKILL.md`](../skills/dog-graph-authoring/SKILL.md);该图已经三轮元图 (`do-dog-genesis`) 验收,结果记在那份技能的「实证」一节。
+
 ## 怎么跑
 
 ```bash

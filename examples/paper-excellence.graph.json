@@ -1,0 +1,527 @@
+{
+	"schemaVersion": "0.9",
+	"id": "paper-excellence",
+	"root": "root",
+	"nodes": {
+		"root": {
+			"kind": "composite",
+			"title": "论文达到优秀论文的标准",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "group-claim" },
+					{ "op": "ref", "id": "group-warrant" },
+					{ "op": "ref", "id": "group-fidelity" },
+					{ "op": "ref", "id": "group-record" },
+					{ "op": "ref", "id": "group-reception" }
+				]
+			},
+			"verifier": {
+				"mode": "agentic",
+				"goal": "把这篇论文作为整体读一遍：它要解决的问题重要，依据站得住，材料没有歪曲真相，别人能自己重做，读者能取到内容。各个方面单独都过之后，它是否真的值得这个领域认真对待？给结论与证据。"
+			}
+		},
+
+		"group-claim": {
+			"kind": "composite",
+			"title": "主张",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "claim-worthwhile" },
+					{ "op": "ref", "id": "claim-checkable" }
+				]
+			}
+		},
+		"claim-worthwhile": {
+			"kind": "composite",
+			"title": "值得传",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "problem-important" },
+					{ "op": "ref", "id": "novelty-real" },
+					{ "op": "ref", "id": "value-argued" }
+				]
+			}
+		},
+		"problem-important": {
+			"kind": "leaf",
+			"title": "问题重要",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文要解决的问题真实且重要：读者能看出为什么值得做（领域内的公认关切、实际后果，或已有工作留下的空缺）。"
+			}
+		},
+		"novelty-real": {
+			"kind": "leaf",
+			"title": "新意实在",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文相对已有知识的增量是真实的：它新在哪里，读者不必自己去查文献就能看出来，且这处新不是表面差别（换个名字、换一组数据、换一套指标）。"
+			}
+		},
+		"value-argued": {
+			"kind": "leaf",
+			"title": "价值说清",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文论证了它的贡献对领域有实际价值（新的洞见、对已有做法的重新评估、新的组合或新任务、效率与公平性上的改进都算），取得当前最优结果不是被看重的前提。"
+			}
+		},
+		"claim-checkable": {
+			"kind": "composite",
+			"title": "确定到可核对",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "no-vagueness" },
+					{ "op": "ref", "id": "not-unfalsifiable" }
+				]
+			}
+		},
+		"no-vagueness": {
+			"kind": "leaf",
+			"title": "不含混",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "读者读完能确定作者到底声称了什么：结论的适用范围与成立条件不含糊。"
+			}
+		},
+		"not-unfalsifiable": {
+			"kind": "leaf",
+			"title": "不兜底",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文的声称强到能被人核对真假：不存在无论看到什么都能成立的兜底说法。"
+			}
+		},
+
+		"group-warrant": {
+			"kind": "composite",
+			"title": "依据",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "warrant-reasoning" },
+					{ "op": "ref", "id": "warrant-observation" }
+				]
+			}
+		},
+		"warrant-reasoning": {
+			"kind": "composite",
+			"title": "推理站得住",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "premises-stated" },
+					{ "op": "ref", "id": "chain-unbroken" }
+				]
+			}
+		},
+		"premises-stated": {
+			"kind": "leaf",
+			"title": "前提写明",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "结论依赖的假设与前提，在材料里都能找到。"
+			}
+		},
+		"chain-unbroken": {
+			"kind": "leaf",
+			"title": "步骤不断链",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文从前提走到结论的每一步都能被读者检查：没有需要读者自行补上的关键一步；定理与命题有可查的完整推演。"
+			}
+		},
+		"warrant-observation": {
+			"kind": "composite",
+			"title": "观察顶得住",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "obs-aligned" },
+					{ "op": "ref", "id": "alternatives-excluded" },
+					{ "op": "ref", "id": "obs-covers-scope" },
+					{ "op": "ref", "id": "obs-variance" },
+					{ "op": "ref", "id": "obs-human-reference" }
+				]
+			}
+		},
+		"obs-aligned": {
+			"kind": "leaf",
+			"title": "观察对准主张",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文的每条关键主张都指向具体的观测、实验或证明，读者能指出是哪一个。"
+			}
+		},
+		"alternatives-excluded": {
+			"kind": "leaf",
+			"title": "观察能把主张与其他解释分开",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文的观察能把这条主张与其他解释分开：更强的对照、其他机制，以及数据与评测互相污染这类平凡解释，都被排除掉了。"
+			}
+		},
+		"obs-covers-scope": {
+			"kind": "leaf",
+			"title": "观察覆盖到声称的适用域",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文观察过的范围覆盖了它声称适用的范围：它声称适用的数据集、任务与规模上都有观察。"
+			}
+		},
+		"obs-variance": {
+			"kind": "leaf",
+			"title": "波动与误差可见",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文的观察强度被量出来：波动与误差可见，结论里的差距不会被噪声解释。"
+			}
+		},
+		"obs-human-reference": {
+			"kind": "leaf",
+			"title": "涉及人类水平时给出对照",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "在涉及人类水平的任务上，论文给出可用的对照：读者能看出结果相对人类表现的位置，或说明为什么没有可比的人类参照。"
+			}
+		},
+
+		"group-fidelity": {
+			"kind": "composite",
+			"title": "不失真",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "no-overstatement" },
+					{ "op": "ref", "id": "no-omission-results" },
+					{ "op": "ref", "id": "no-omission-provenance" }
+				]
+			}
+		},
+		"no-overstatement": {
+			"kind": "leaf",
+			"title": "不多说",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "材料给出的适用范围与强度，不超过证据支持的范围与强度。"
+			}
+		},
+		"no-omission-results": {
+			"kind": "leaf",
+			"title": "不利结果与边界不少",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "局限、失败与反例、更广泛影响，在材料里同样能找到。"
+			}
+		},
+		"no-omission-provenance": {
+			"kind": "leaf",
+			"title": "来源信息不少",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "影响可信度的来源信息在材料里同样能找到：作者贡献、利益冲突、生成式模型使用、是否重复发表。"
+			}
+		},
+
+		"group-record": {
+			"kind": "composite",
+			"title": "记录",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "materials-addressable" },
+					{ "op": "ref", "id": "materials-license" },
+					{ "op": "ref", "id": "details-procedure" },
+					{ "op": "ref", "id": "details-implementation" },
+					{ "op": "ref", "id": "readouts-recomputable" }
+				]
+			}
+		},
+		"materials-addressable": {
+			"kind": "leaf",
+			"title": "材料可寻址",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "复现所需的材料以可寻址的位置给出：数据、代码与模型的仓库或编号在材料里能查到。"
+			}
+		},
+		"materials-license": {
+			"kind": "leaf",
+			"title": "使用条件写明",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "材料的使用条件在材料里能查到：许可与获取限制写明，使用他人资产时创作者被引用。"
+			}
+		},
+		"details-procedure": {
+			"kind": "leaf",
+			"title": "实验规程细节",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "实验规程的细节写明：样本量、排除规则、重复次数、随机化与盲法，未采用的也写明。"
+			}
+		},
+		"details-implementation": {
+			"kind": "leaf",
+			"title": "训练与实现细节",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "训练与实现的细节写明：数据划分、超参与其选择方式、计算资源与时间。"
+			}
+		},
+		"readouts-recomputable": {
+			"kind": "leaf",
+			"title": "读数可复算",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文里的数能被别人算出同样的值：指标的定义与取值方式（样本数、采样设置、归一化、评分规则）在材料里写明。"
+			}
+		},
+
+		"group-reception": {
+			"kind": "composite",
+			"title": "接收",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "reception-locatable" },
+					{ "op": "ref", "id": "reception-decodable" },
+					{ "op": "ref", "id": "reception-no-dilution" }
+				]
+			}
+		},
+		"reception-locatable": {
+			"kind": "composite",
+			"title": "可定位",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "conclusion-locatable" },
+					{ "op": "ref", "id": "figures-linked" },
+					{ "op": "ref", "id": "headline-visible" }
+				]
+			}
+		},
+		"conclusion-locatable": {
+			"kind": "leaf",
+			"title": "结论有出处",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文里任何一条结论，读者都能在文中找到它的出处。"
+			}
+		},
+		"figures-linked": {
+			"kind": "leaf",
+			"title": "图表与结论互相指得到",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "图表与结论构成闭合的指路：读结论能找到对应的图，读图与图说明能知道它在支撑哪条结论、有什么限定。"
+			}
+		},
+		"headline-visible": {
+			"kind": "leaf",
+			"title": "核心结果一眼可见",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "论文的核心结果一眼可见：摘要与关键图表里能直接看到结论和支撑它的数字。"
+			}
+		},
+		"reception-decodable": {
+			"kind": "composite",
+			"title": "可解读",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "terms-first" },
+					{ "op": "ref", "id": "transitions" },
+					{ "op": "ref", "id": "density-not-too-high" }
+				]
+			}
+		},
+		"terms-first": {
+			"kind": "leaf",
+			"title": "术语与背景先交代",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "术语与领域背景在用到之前交代，非本领域的读者也能获得理解所需的背景。"
+			}
+		},
+		"transitions": {
+			"kind": "leaf",
+			"title": "段落有承接",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "段落之间有承接：读者读每一段都知道它从上一段接下了什么，不需要回头补课。"
+			}
+		},
+		"density-not-too-high": {
+			"kind": "leaf",
+			"title": "密度不过高",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "信息密度不过高：没有需要反复重读才能跟上的段落。"
+			}
+		},
+		"reception-no-dilution": {
+			"kind": "composite",
+			"title": "篇幅用在内容上",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"completion": {
+				"op": "all",
+				"items": [
+					{ "op": "ref", "id": "no-filler" },
+					{ "op": "ref", "id": "no-boilerplate" }
+				]
+			}
+		},
+		"no-filler": {
+			"kind": "leaf",
+			"title": "没有无信息量的文字",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "没有对同行没有信息量的文字：防御性声明式的堆砌（例如强调通过了多少内部测试）、自我表扬式的总结、把结论换个说法再说一遍。"
+			}
+		},
+		"no-boilerplate": {
+			"kind": "leaf",
+			"title": "没有模板腔",
+			"constraint": "hard",
+			"target": "paper.pdf",
+			"verifier": {
+				"mode": "agentic",
+				"goal": "没有用可以放进任何一篇文章的句子与词语来替代实质内容（模板腔、万能句、含糊的程度词）。"
+			}
+		}
+	},
+	"contains": [
+		{ "parent": "root", "child": "group-claim", "required": true, "failure": "fatal" },
+		{ "parent": "root", "child": "group-warrant", "required": true, "failure": "fatal" },
+		{ "parent": "root", "child": "group-fidelity", "required": true, "failure": "fatal" },
+		{ "parent": "root", "child": "group-record", "required": true, "failure": "fatal" },
+		{ "parent": "root", "child": "group-reception", "required": true, "failure": "tolerable" },
+
+		{ "parent": "group-claim", "child": "claim-worthwhile", "required": true, "failure": "fatal" },
+		{ "parent": "group-claim", "child": "claim-checkable", "required": true, "failure": "fatal" },
+		{ "parent": "claim-worthwhile", "child": "problem-important", "required": true, "failure": "fatal" },
+		{ "parent": "claim-worthwhile", "child": "novelty-real", "required": true, "failure": "fatal" },
+		{ "parent": "claim-worthwhile", "child": "value-argued", "required": true, "failure": "fatal" },
+		{ "parent": "claim-checkable", "child": "no-vagueness", "required": true, "failure": "fatal" },
+		{ "parent": "claim-checkable", "child": "not-unfalsifiable", "required": true, "failure": "fatal" },
+
+		{ "parent": "group-warrant", "child": "warrant-reasoning", "required": true, "failure": "fatal" },
+		{ "parent": "group-warrant", "child": "warrant-observation", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-reasoning", "child": "premises-stated", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-reasoning", "child": "chain-unbroken", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-observation", "child": "obs-aligned", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-observation", "child": "alternatives-excluded", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-observation", "child": "obs-covers-scope", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-observation", "child": "obs-variance", "required": true, "failure": "fatal" },
+		{ "parent": "warrant-observation", "child": "obs-human-reference", "required": true, "failure": "fatal" },
+
+		{ "parent": "group-fidelity", "child": "no-overstatement", "required": true, "failure": "fatal" },
+		{ "parent": "group-fidelity", "child": "no-omission-results", "required": true, "failure": "fatal" },
+		{ "parent": "group-fidelity", "child": "no-omission-provenance", "required": true, "failure": "fatal" },
+
+		{ "parent": "group-record", "child": "materials-addressable", "required": true, "failure": "fatal" },
+		{ "parent": "group-record", "child": "materials-license", "required": true, "failure": "fatal" },
+		{ "parent": "group-record", "child": "details-procedure", "required": true, "failure": "fatal" },
+		{ "parent": "group-record", "child": "details-implementation", "required": true, "failure": "fatal" },
+		{ "parent": "group-record", "child": "readouts-recomputable", "required": true, "failure": "fatal" },
+
+		{ "parent": "group-reception", "child": "reception-locatable", "required": true, "failure": "tolerable" },
+		{ "parent": "group-reception", "child": "reception-decodable", "required": true, "failure": "tolerable" },
+		{ "parent": "group-reception", "child": "reception-no-dilution", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-locatable", "child": "conclusion-locatable", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-locatable", "child": "figures-linked", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-locatable", "child": "headline-visible", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-decodable", "child": "terms-first", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-decodable", "child": "transitions", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-decodable", "child": "density-not-too-high", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-no-dilution", "child": "no-filler", "required": true, "failure": "tolerable" },
+		{ "parent": "reception-no-dilution", "child": "no-boilerplate", "required": true, "failure": "tolerable" }
+	],
+	"dependsOn": []
+}

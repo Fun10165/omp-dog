@@ -22,6 +22,7 @@ interface CliOptions {
 	readonly ompBin: string;
 	readonly concurrency: number;
 	readonly verifierTimeoutMs: number;
+	readonly maxSandboxBytes?: number;
 	readonly model?: string;
 	readonly thinking?: string;
 	readonly rest: readonly string[];
@@ -42,6 +43,7 @@ Options:
   --thinking <level>   thinking level for verifier sessions
   --concurrency <n>    concurrent verifier sessions (default 4)
   --timeout <seconds>  budget for one verdict (default 900)
+  --max-sandbox-mb <n> ceiling for one frozen target tree, in MiB (default 64)
   --help, -h           this text
 
 Everything after \`--\` is passed to the main session (host only).
@@ -63,6 +65,7 @@ async function main(argv: readonly string[]): Promise<number> {
 		ompBin: parsed.ompBin,
 		concurrency: parsed.concurrency,
 		verifierTimeoutMs: parsed.verifierTimeoutMs,
+		...(parsed.maxSandboxBytes === undefined ? {} : { maxSandboxBytes: parsed.maxSandboxBytes }),
 		...(parsed.model === undefined ? {} : { model: parsed.model }),
 		...(parsed.thinking === undefined ? {} : { thinking: parsed.thinking }),
 	});
@@ -153,6 +156,7 @@ function parseArgs(args: readonly string[]): CliOptions | Error {
 	let thinking: string | undefined;
 	let concurrency = 4;
 	let timeoutSeconds = 900;
+	let maxSandboxMb: number | undefined;
 	const rest: string[] = [];
 	for (let index = 0; index < args.length; index++) {
 		const arg = args[index] ?? "";
@@ -172,6 +176,7 @@ function parseArgs(args: readonly string[]): CliOptions | Error {
 			else if (arg === "--thinking") thinking = value();
 			else if (arg === "--concurrency") concurrency = positiveInteger(value(), "--concurrency");
 			else if (arg === "--timeout") timeoutSeconds = positiveInteger(value(), "--timeout");
+			else if (arg === "--max-sandbox-mb") maxSandboxMb = positiveInteger(value(), "--max-sandbox-mb");
 			else if (arg.startsWith("--")) return new Error(`unknown option ${arg}`);
 			else rest.push(arg);
 		} catch (error) {
@@ -183,6 +188,7 @@ function parseArgs(args: readonly string[]): CliOptions | Error {
 		ompBin: resolveOmpBin(ompBin),
 		concurrency,
 		verifierTimeoutMs: timeoutSeconds * 1_000,
+		...(maxSandboxMb === undefined ? {} : { maxSandboxBytes: maxSandboxMb * 1024 * 1024 }),
 		...(model === undefined ? {} : { model }),
 		...(thinking === undefined ? {} : { thinking }),
 		rest,

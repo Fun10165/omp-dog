@@ -11,6 +11,7 @@ import { isJsonValue, type JsonValue } from "../core/model.ts";
 import type { AgenticRunner, Verdict } from "../core/verifiers.ts";
 import { buildVerifierBrief, readVerifierSystemPrompt } from "./brief.ts";
 import { VERDICT_TOOL_NAME, VERIFIER_TOOLS, newestSessionFile } from "./config.ts";
+import { writeVerifierMcpConfig } from "./mcp-config.ts";
 import { RpcSession, type RpcFrame } from "./rpc.ts";
 
 export interface VerifierKernelOptions {
@@ -35,6 +36,7 @@ export function createRpcAgenticRunner(options: VerifierKernelOptions): AgenticR
 	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
 	return async (goal, workspace, target, env) => {
+		await writeVerifierMcpConfig({ workspace });
 		const sessionDirectory = options.sessionDirectory(env.runId, env.goalId);
 		await mkdir(sessionDirectory, { recursive: true });
 		const session = await RpcSession.start({
@@ -90,7 +92,9 @@ export function createRpcAgenticRunner(options: VerifierKernelOptions): AgenticR
 			() => timedOut.reject(new Error(`timed out after ${Math.round(timeoutMs / 1000)}s waiting for a verdict`)),
 			timeoutMs,
 		);
-		timer.unref();
+		// Deliberately referenced: a session that dies without a verdict must
+		// still settle here. Unref'd, the event loop could drain first and the
+		// whole run would exit (code 13) with nothing written.
 		const aborted = Promise.withResolvers<Verdict>();
 		if (env.signal?.aborted === true) aborted.reject(new Error("canceled"));
 		else env.signal?.addEventListener("abort", () => aborted.reject(new Error("canceled")), { once: true });

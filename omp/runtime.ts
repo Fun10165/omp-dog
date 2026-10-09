@@ -17,6 +17,8 @@ export interface DogRuntimeOptions {
 	readonly model?: string;
 	readonly thinking?: string;
 	readonly verifierTimeoutMs?: number;
+	/** Ceiling for one frozen target tree; bigger pipelines need more than the 64 MiB default. */
+	readonly maxSandboxBytes?: number;
 	/** One callback per verifier frame, for progress surfaces. */
 	readonly onVerifierFrame?: (goalId: string, frame: RpcFrame) => void;
 }
@@ -46,6 +48,7 @@ export function createDogRuntime(options: DogRuntimeOptions): DogRuntime {
 			projectDir: options.projectDir,
 			scriptsDirectory: SCRIPT_LIBRARY,
 			concurrency: options.concurrency,
+			...(options.maxSandboxBytes === undefined ? {} : { maxSandboxBytes: options.maxSandboxBytes }),
 		}),
 		repository,
 		programmatic: createProgrammaticRunner(SCRIPT_LIBRARY),
